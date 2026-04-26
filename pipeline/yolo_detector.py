@@ -45,7 +45,8 @@ class YOLOPartDetector:
         self,
         model_path: str = "yolov8n.pt",
         confidence_threshold: float = 0.5,
-        use_gpu: bool = False
+        use_gpu: bool = False,
+        min_area_pct: float = 2.0  # Ignore detections smaller than 2% of the image
     ):
         """Initialize the YOLO detector.
         
@@ -53,12 +54,14 @@ class YOLOPartDetector:
             model_path: Path to YOLO model weights
             confidence_threshold: Minimum confidence for detections
             use_gpu: Whether to use GPU for inference
+            min_area_pct: Minimum area as percentage of total image (0-100)
         """
         self.confidence_threshold = confidence_threshold
         self.model_path = model_path
+        self.min_area_pct = min_area_pct
         self._model = None
         
-        logger.info(f"Initializing YOLO detector with model: {model_path}")
+        logger.info(f"Initializing YOLO detector with model: {model_path} (min_area: {min_area_pct}%)")
     
     @property
     def model(self) -> YOLO:
@@ -75,7 +78,7 @@ class YOLOPartDetector:
             image: Input image as numpy array (RGB)
             
         Returns:
-            DetectionResult if part detected, None otherwise
+            DetectionResult if part detected and passes size check, None otherwise
         """
         try:
             results = self.model(image, verbose=False)
@@ -84,29 +87,53 @@ class YOLOPartDetector:
                 logger.debug("No objects detected in image")
                 return None
             
-            # Get highest confidence detection
+            # Get detections that meet confidence threshold
             boxes = results[0].boxes
-            best_idx = boxes.conf.argmax().item()
+            valid_detections = []
             
-            confidence = boxes.conf[best_idx].item()
-            if confidence < self.confidence_threshold:
-                logger.debug(f"Detection confidence {confidence:.2f} below threshold {self.confidence_threshold}")
+            img_h, img_w = image.shape[:2]
+            total_area = img_w * img_h
+            
+            for i in range(len(boxes)):
+                confidence = boxes.conf[i].item()
+                if confidence < self.confidence_threshold:
+                    continue
+                
+                bbox = boxes.xyxy[i].cpu().numpy().astype(int).tolist()
+                x1, y1, x2, y2 = bbox
+                
+                # Calculate area percentage
+                box_area = (x2 - x1) * (y2 - y1)
+                area_pct = (box_area / total_area) * 100
+                
+                if area_pct < self.min_area_pct:
+                    logger.debug(f"Ignoring detection: area {area_pct:.2f}% < {self.min_area_pct}% threshold")
+                    continue
+                
+                valid_detections.append({
+                    'idx': i,
+                    'confidence': confidence,
+                    'area_pct': area_pct,
+                    'bbox': bbox,
+                    'cls_id': int(boxes.cls[i].item())
+                })
+            
+            if not valid_detections:
+                logger.debug("No detections met both confidence and size thresholds")
                 return None
             
-            cls_id = int(boxes.cls[best_idx].item())
-            class_name = self.model.names[cls_id]
+            # Return the highest confidence detection that passed size check
+            best = max(valid_detections, key=lambda x: x['confidence'])
             
-            # Map to auto part category
+            class_name = self.model.names[best['cls_id']]
             part_type = self._map_to_part_type(class_name)
             
-            bbox = boxes.xyxy[best_idx].cpu().numpy().astype(int).tolist()
-            
-            logger.info(f"Detected: {class_name} -> {part_type} (confidence: {confidence:.2f})")
+            logger.info(f"Detected: {class_name} -> {part_type} (conf: {best['confidence']:.2f}, area: {best['area_pct']:.1f}%)")
             
             return DetectionResult(
                 part_type=part_type,
-                confidence=confidence,
-                bbox=bbox,
+                confidence=best['confidence'],
+                bbox=best['bbox'],
                 class_name=class_name
             )
             
@@ -122,7 +149,7 @@ class YOLOPartDetector:
             top_k: Maximum number of detections to return
             
         Returns:
-            List of DetectionResult objects
+            List of DetectionResult objects that pass size check
         """
         try:
             results = self.model(image, verbose=False)
@@ -131,23 +158,36 @@ class YOLOPartDetector:
                 return []
             
             boxes = results[0].boxes
+            img_h, img_w = image.shape[:2]
+            total_area = img_w * img_h
             
-            # Filter by confidence and sort
+            # Filter by confidence and size, then sort
             detections = []
             for i in range(len(boxes)):
                 confidence = boxes.conf[i].item()
-                if confidence >= self.confidence_threshold:
-                    cls_id = int(boxes.cls[i].item())
-                    class_name = self.model.names[cls_id]
-                    part_type = self._map_to_part_type(class_name)
-                    bbox = boxes.xyxy[i].cpu().numpy().astype(int).tolist()
+                if confidence < self.confidence_threshold:
+                    continue
+                
+                bbox = boxes.xyxy[i].cpu().numpy().astype(int).tolist()
+                x1, y1, x2, y2 = bbox
+                
+                # Area check
+                box_area = (x2 - x1) * (y2 - y1)
+                area_pct = (box_area / total_area) * 100
+                
+                if area_pct < self.min_area_pct:
+                    continue
                     
-                    detections.append(DetectionResult(
-                        part_type=part_type,
-                        confidence=confidence,
-                        bbox=bbox,
-                        class_name=class_name
-                    ))
+                cls_id = int(boxes.cls[i].item())
+                class_name = self.model.names[cls_id]
+                part_type = self._map_to_part_type(class_name)
+                
+                detections.append(DetectionResult(
+                    part_type=part_type,
+                    confidence=confidence,
+                    bbox=bbox,
+                    class_name=class_name
+                ))
             
             # Sort by confidence and return top_k
             detections.sort(key=lambda x: x.confidence, reverse=True)

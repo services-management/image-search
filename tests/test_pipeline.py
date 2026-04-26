@@ -84,7 +84,10 @@ class TestImageValidation:
         from pipeline.preprocessor import validate_image
         import io
         
-        image = Image.new('RGB', (100, 100), color='red')
+        # Create a non-uniform image (noise) to pass the quality gate
+        data = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
+        image = Image.fromarray(data)
+        
         buffer = io.BytesIO()
         image.save(buffer, format='JPEG')
         image_bytes = buffer.getvalue()
@@ -314,6 +317,7 @@ class TestFAISSIndex:
             success = new_index.load_index()
             
             assert success is True
+            assert new_index.index is not None
             assert new_index.index.ntotal == 3
 
 

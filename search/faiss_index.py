@@ -13,13 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 class FAISSIndex:
-    """FAISS-based vector index for image embeddings."""
+    """FAISS-based vector index for image and text embeddings."""
     
     def __init__(
         self,
         dimension: int = 512,
         index_path: str = "./data/faiss_index",
-        index_type: str = "flat"
+        index_type: str = "hnsw",
+        metric: str = "l2"
     ):
         """Initialize the FAISS index.
         
@@ -27,41 +28,48 @@ class FAISSIndex:
             dimension: Dimension of the embedding vectors
             index_path: Path to save/load the index
             index_type: Type of index ('flat', 'ivf', 'hnsw')
+            metric: Distance metric ('l2' or 'inner_product')
         """
         self.dimension = dimension
         self.index_path = index_path
         self.index_type = index_type
+        self.metric = metric
         self.index: Optional[faiss.Index] = None
         self.id_to_product: dict = {}
-        self.product_metadata: dict = {}  # Product info (name, price, etc.)
+        self.product_metadata: dict = {}
         self.is_trained = False
         
-        logger.info(f"Initializing FAISS index (dim={dimension}, type={index_type})")
+        logger.info(f"Initializing FAISS index (dim={dimension}, type={index_type}, metric={metric})")
     
-    def create_index(self, nlist: int = 100):
-        """Create a new FAISS index.
-        
-        Args:
-            nlist: Number of clusters for IVF index
-        """
+    def create_index(self):
+        """Create a new FAISS index based on configuration."""
+        # Select metric
+        faiss_metric = faiss.METRIC_L2
+        if self.metric == "inner_product":
+            faiss_metric = faiss.METRIC_INNER_PRODUCT
+
         if self.index_type == "flat":
-            # Simple flat index - exact search, good for small datasets
-            self.index = faiss.IndexFlatL2(self.dimension)
-            
-        elif self.index_type == "ivf":
-            # IVF index - faster approximate search for large datasets
-            quantizer = faiss.IndexFlatL2(self.dimension)
-            self.index = faiss.IndexIVFFlat(quantizer, self.dimension, nlist)
+            if self.metric == "inner_product":
+                self.index = faiss.IndexFlatIP(self.dimension)
+            else:
+                self.index = faiss.IndexFlatL2(self.dimension)
             
         elif self.index_type == "hnsw":
-            # HNSW index - very fast approximate search
-            self.index = faiss.IndexHNSWFlat(self.dimension, 32)  # 32 neighbors
+            # HNSW is high-performance approximate nearest neighbor search
+            self.index = faiss.IndexHNSWFlat(self.dimension, 32, faiss_metric)
+            self.index.hnsw.efConstruction = 40
+            self.index.hnsw.efSearch = 16
+            
+        elif self.index_type == "ivf":
+            quantizer = faiss.IndexFlatL2(self.dimension)
+            if self.metric == "inner_product":
+                quantizer = faiss.IndexFlatIP(self.dimension)
+            self.index = faiss.IndexIVFFlat(quantizer, self.dimension, 100, faiss_metric)
             
         else:
-            # Default to flat
             self.index = faiss.IndexFlatL2(self.dimension)
         
-        logger.info(f"Created new {self.index_type} FAISS index")
+        logger.info(f"Created new {self.index_type} FAISS index with {self.metric}")
     
     def load_index(self) -> bool:
         """Load existing index from disk.

@@ -39,9 +39,21 @@ class CLIPEmbedding:
         """Lazy-load the CLIP model."""
         if self._model is None:
             logger.info(f"Loading CLIP model from {self.model_name}...")
-            self._model = CLIPModel.from_pretrained(self.model_name)
-            self._model.to(self._device)
-            self._model.eval()  # Set to evaluation mode
+            model = CLIPModel.from_pretrained(self.model_name)
+            model.to(self._device)
+            model.eval()  # Set to evaluation mode
+            
+            # Optimization: Use torch.compile for PyTorch 2.0+ speed boost
+            try:
+                if hasattr(torch, "compile"):
+                    logger.info("Compiling CLIP model for faster inference...")
+                    self._model = torch.compile(model)
+                else:
+                    self._model = model
+            except Exception as e:
+                logger.warning(f"Could not compile model: {e}. Falling back to standard model.")
+                self._model = model
+                
         return self._model
     
     @property

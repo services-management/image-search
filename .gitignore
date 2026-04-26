@@ -48,7 +48,7 @@ product_metadata.json
 index_info.json
 
 # Datasets (large files)
-datasets/
+ml_datasets/
 
 # Training runs & outputs
 runs/

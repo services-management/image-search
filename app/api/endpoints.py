@@ -7,16 +7,16 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 from PIL import Image
 
-from ..config import settings
-from ..pipeline.adaptive_preprocessor import AdaptivePreprocessor
-from ..pipeline.brand_matcher import get_brand_matcher
-from ..pipeline.embedding import CLIPEmbedding, get_clip_model_dimension
-from ..pipeline.ocr_extractor import OCRExtractor
-from ..pipeline.preprocessor import ImagePreprocessor, validate_image, validate_image_full
-from ..pipeline.yolo_detector import YOLOPartDetector
-from ..search.catalog_client import CatalogClient
-from ..search.faiss_index import FAISSIndex
-from ..search.merger import ResultMerger
+from app.config import settings
+from pipeline.adaptive_preprocessor import AdaptivePreprocessor
+from pipeline.brand_matcher import get_brand_matcher
+from pipeline.embedding import CLIPEmbedding
+from pipeline.ocr_extractor import OCRExtractor
+from pipeline.preprocessor import validate_image, validate_image_full
+from pipeline.yolo_detector import YOLOPartDetector
+from search.catalog_client import CatalogClient
+from search.faiss_index import FAISSIndex
+from search.merger import ResultMerger
 from .schemas import (
     ImageSearchQuery,
     ImageSearchResponse,
@@ -24,6 +24,7 @@ from .schemas import (
     RebuildIndexResponse,
     SearchResult as SearchResultSchema,
 )
+from pipeline.text_embedding import TextEmbedding
 
 
 def extract_part_number(text: str) -> Optional[str]:
@@ -65,6 +66,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# ... (rest of imports)
+
 # Initialize components (lazy-loaded via properties)
 class Components:
     """Lazy-loaded components."""
@@ -73,7 +77,9 @@ class Components:
     _detector = None
     _ocr = None
     _embedder = None
+    _text_embedder = None  # NEW: BGE-M3
     _faiss_index = None
+    _text_faiss_index = None  # NEW: Text Index
     _catalog_client = None
     _merger = None
     _brand_matcher = None
@@ -83,19 +89,20 @@ class Components:
         if self._brand_matcher is None:
             self._brand_matcher = get_brand_matcher()
         return self._brand_matcher
-    
+
     @property
     def preprocessor(self):
         if self._preprocessor is None:
+            from pipeline.preprocessor import ImagePreprocessor
             self._preprocessor = ImagePreprocessor()
         return self._preprocessor
-    
+
     @property
     def adaptive_preprocessor(self):
         if self._adaptive_preprocessor is None:
             self._adaptive_preprocessor = AdaptivePreprocessor()
         return self._adaptive_preprocessor
-    
+
     @property
     def detector(self):
         if self._detector is None:
@@ -105,7 +112,7 @@ class Components:
                 settings.USE_GPU
             )
         return self._detector
-    
+
     @property
     def ocr(self):
         if self._ocr is None:
@@ -114,7 +121,7 @@ class Components:
                 settings.USE_GPU
             )
         return self._ocr
-    
+
     @property
     def embedder(self):
         if self._embedder is None:
@@ -123,18 +130,39 @@ class Components:
                 settings.USE_GPU
             )
         return self._embedder
+
+    @property
+    def text_embedder(self):
+        if self._text_embedder is None:
+            self._text_embedder = TextEmbedding(
+                settings.TEXT_MODEL,
+                settings.USE_GPU
+            )
+        return self._text_embedder
     
     @property
     def faiss_index(self):
         if self._faiss_index is None:
-            dimension = get_clip_model_dimension(settings.CLIP_MODEL)
             self._faiss_index = FAISSIndex(
-                dimension=dimension,
-                index_path=settings.FAISS_INDEX_PATH
+                dimension=settings.EMBEDDING_DIMENSION,
+                index_path=f"{settings.FAISS_INDEX_PATH}/image",
+                index_type="hnsw",
+                metric="l2"
             )
-            # Try to load existing index
             self._faiss_index.load_index()
         return self._faiss_index
+
+    @property
+    def text_faiss_index(self):
+        if self._text_faiss_index is None:
+            self._text_faiss_index = FAISSIndex(
+                dimension=settings.TEXT_EMBEDDING_DIMENSION,
+                index_path=f"{settings.FAISS_INDEX_PATH}/text",
+                index_type="hnsw",
+                metric="inner_product"
+            )
+            self._text_faiss_index.load_index()
+        return self._text_faiss_index
     
     @property
     def catalog_client(self):
@@ -247,26 +275,43 @@ async def search_by_image(
     
     # 5. Generate embedding for vector search
     try:
-        # If detection succeeded, crop to bbox with 10-20% padding (PDF spec)
+        processed_pil = Image.fromarray(processed)
+        w, h = processed_pil.size
+        
         if detection_result and detection_result.bbox:
-            logger.debug(f"Cropping to detection bbox: {detection_result.bbox}")
-            processed_pil = Image.fromarray(processed)
-            w, h = processed_pil.size
+            # OPTIMIZED: Square Crop with Padding (Anti-Distortion)
+            logger.debug(f"Applying square crop to detection bbox: {detection_result.bbox}")
             x1, y1, x2, y2 = detection_result.bbox
-            # Add 15% padding, clamped to image boundaries
             bw, bh = x2 - x1, y2 - y1
-            pad_x = max(15, min(50, int(bw * 0.15)))
-            pad_y = max(15, min(50, int(bh * 0.15)))
-            x1 = max(0, x1 - pad_x)
-            y1 = max(0, y1 - pad_y)
-            x2 = min(w, x2 + pad_x)
-            y2 = min(h, y2 + pad_y)
-            image_for_clip = processed_pil.crop((x1, y1, x2, y2))
-            logger.debug(f"Padded bbox: [{x1},{y1},{x2},{y2}]")
+            
+            # 1. Add 15% padding
+            pad_w = int(bw * 0.15)
+            pad_h = int(bh * 0.15)
+            
+            # 2. Find center and side length for square
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            side = max(bw + 2*pad_w, bh + 2*pad_h)
+            
+            # 3. Calculate square coordinates
+            nx1 = max(0, cx - side/2)
+            ny1 = max(0, cy - side/2)
+            nx2 = min(w, cx + side/2)
+            ny2 = min(h, cy + side/2)
+            
+            # 4. Crop and ensure it is a perfect square (handles image edges)
+            image_for_clip = processed_pil.crop((nx1, ny1, nx2, ny2))
+            from PIL import ImageOps
+            image_for_clip = ImageOps.pad(image_for_clip, (int(side), int(side)), color=(0,0,0))
+            logger.debug(f"Square padded crop created: {image_for_clip.size}")
+            
         else:
-            # Fallback to whole processed image if no detection
-            logger.debug("No detection, using whole processed image for CLIP")
-            image_for_clip = Image.fromarray(processed)
+            # OPTIMIZED: 70% Center Crop Fallback (Noise Reduction)
+            logger.debug("No detection, applying 70% center crop for CLIP")
+            left = (w - w * 0.7) / 2
+            top = (h - h * 0.7) / 2
+            right = (w + w * 0.7) / 2
+            bottom = (h + h * 0.7) / 2
+            image_for_clip = processed_pil.crop((left, top, right, bottom))
         
         # CLIP expects 224x224, embedder handles resize internally
         embedding = await loop.run_in_executor(

@@ -55,7 +55,7 @@ def main():
     print()
     
     # Create output directory
-    output_dir = Path("datasets/motor_oil")
+    output_dir = Path("ml_datasets/motor_oil")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print("""
@@ -77,10 +77,10 @@ def main():
     ║  7. Click "Download" to get ZIP                          ║
     ║                                                          ║
     ║  8. Extract ZIP to:                                      ║
-    ║     ml_service/datasets/motor_oil/                       ║
+    ║     ml_service/ml_datasets/motor_oil/                       ║
     ║                                                          ║
     ║  Expected structure:                                     ║
-    ║  datasets/motor_oil/                                     ║
+    ║  ml_datasets/motor_oil/                                     ║
     ║  ├── train/                                              ║
     ║  │   ├── images/                                         ║
     ║  │   └── labels/                                         ║
@@ -93,13 +93,13 @@ def main():
     """)
     
     # Check if already downloaded
-    expected_dir = Path("datasets/motor_oil/train")
+    expected_dir = Path("ml_datasets/motor_oil/train")
     if expected_dir.exists():
         print("✓ Motor oil dataset already exists!")
-        print("  Location: datasets/motor_oil/")
+        print("  Location: ml_datasets/motor_oil/")
         
         # Count images
-        train_images = list((Path("datasets/motor_oil/train/images")).glob("*.*"))
+        train_images = list((Path("ml_datasets/motor_oil/train/images")).glob("*.*"))
         print(f"  Training images: {len(train_images)}")
         
         return

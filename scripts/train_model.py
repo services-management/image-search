@@ -43,7 +43,7 @@ def train_model(args):
         # Built-in dataset
         data_config = 'carparts-seg.yaml'
     elif args.dataset == 'custom':
-        data_config = 'datasets/combined_car_parts/data.yaml'
+        data_config = 'ml_datasets/combined_car_parts/data.yaml'
     else:
         data_config = f'{args.dataset}.yaml'
     

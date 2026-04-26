@@ -10,14 +10,11 @@ Usage:
     python scripts/build_product_index.py
 """
 
-import os
 import sys
-import json
 from pathlib import Path
 import logging
 import numpy as np
 from PIL import Image
-import torch
 import requests
 from io import BytesIO
 
@@ -73,7 +70,7 @@ class HybridIndexBuilder:
         try:
             resp = requests.get(url, timeout=10)
             return Image.open(BytesIO(resp.content)).convert('RGB')
-        except:
+        except Exception:
             return None
 
     def build(self):

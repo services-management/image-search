@@ -28,8 +28,13 @@ COPY . .
 RUN mkdir -p /app/models /app/data/faiss_index
 
 # Pre-download models during build (optional - reduces startup time)
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" || echo "YOLO model download skipped"
-RUN python -c "from paddleocr import PaddleOCR; PaddleOCR(lang='en', show_log=False)" || echo "OCR model download skipped"
+ARG SKIP_MODEL_DOWNLOAD=false
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+        python -c "from ultralytics import YOLO; YOLO('yolov8m.pt')" || echo "YOLO model download skipped"; \
+        python -c "from paddleocr import PaddleOCR; PaddleOCR(lang='en', show_log=False)" || echo "OCR model download skipped"; \
+    else \
+        echo "Skipping model pre-download"; \
+    fi
 
 # Expose port
 EXPOSE 8001

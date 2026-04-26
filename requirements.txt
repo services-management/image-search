@@ -30,3 +30,6 @@ pytest-xdist==3.6.1          # For parallel testing
 # Fuzzy matching
 thefuzz>=0.19.0
 python-Levenshtein>=0.20.0
+
+# Linting
+ruff>=0.14.0

@@ -2,6 +2,11 @@
 
 This module provides OCR-based text extraction for brand/logo recognition.
 """
+import os
+# Disable OneDNN/MKL-DNN on Windows to avoid PaddleOCR crashes
+# Must be set BEFORE paddle/paddleocr is imported anywhere in the process
+os.environ["FLAGS_use_mkldnn"] = "0"
+
 from paddleocr import PaddleOCR
 from typing import List, Optional
 from dataclasses import dataclass
@@ -44,7 +49,7 @@ class OCRExtractor:
     
     def __init__(
         self,
-        confidence_threshold: float = 0.6,
+        confidence_threshold: float = 0.3,
         use_gpu: bool = False,
         lang: str = 'en'
     ):

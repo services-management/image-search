@@ -26,19 +26,41 @@ class YOLOPartDetector:
     # Auto parts categories mapping
     # Maps YOLO class names to auto part categories
     AUTO_PARTS_CATEGORIES = {
-        'brake': ['brake_pad', 'brake_disc', 'brake_caliper', 'brake', 'rotor'],
-        'filter': ['oil_filter', 'air_filter', 'fuel_filter', 'filter', 'cabin_filter'],
-        'battery': ['car_battery', 'battery', 'accumulator'],
-        'spark_plug': ['spark_plug', 'ignition_coil', 'plug'],
-        'suspension': ['shock_absorber', 'strut', 'spring', 'suspension', 'damper'],
-        'engine': ['engine_part', 'piston', 'gasket', 'timing_belt', 'serpentine_belt', 'belt'],
-        'lighting': ['headlight', 'taillight', 'bulb', 'lamp', 'light'],
-        'tire': ['tire', 'wheel', 'rim'],
-        'exhaust': ['exhaust', 'muffler', 'catalytic', 'pipe'],
-        'clutch': ['clutch', 'flywheel'],
-        'radiator': ['radiator', 'cooling', 'fan'],
-        'alternator': ['alternator', 'generator', 'starter'],
-        'wiper': ['wiper', 'wiper_blade'],
+        # Body / Exterior (classes 0-12 + 58, 60, 62)
+        'bumper': ['front_bumper', 'rear_bumper'],
+        'hood': ['hood'],
+        'trunk': ['trunk'],
+        'door': ['front_door', 'rear_door'],
+        'lighting': ['front_light', 'rear_light', 'headlights', 'taillights'],
+        'glass': ['front_windshield', 'rear_windshield', 'window_regulator'],
+        'wheel': ['wheel', 'rim'],
+        'mirror': ['mirror', 'side_mirror'],
+        'grille': ['grille'],
+        'spoiler': ['spoiler'],
+        # Braking (classes 36, 46, 48, 52)
+        'brake': ['brake_pad', 'brake_rotor', 'brake_caliper', 'vacuum_brake_booster'],
+        # Filters (class 23)
+        'filter': ['oil_filter'],
+        # Battery / Electrical (classes 17, 37, 39, 44, 55, 56, 57, 59)
+        'battery': ['battery'],
+        'alternator': ['alternator', 'starter', 'ignition_coil', 'spark_plug',
+                       'distributor', 'oxygen_sensor', 'oil_pressure_sensor',
+                       'fuse_box', 'air_compressor'],
+        # Engine / Powertrain (classes 18, 25, 27, 29, 30, 35, 40, 43, 45, 47, 49, 50, 53, 54)
+        'engine': ['piston', 'engine_block', 'cylinder_head', 'camshaft',
+                   'crankshaft', 'engine_valve', 'valve_lifter',
+                   'fuel_injector', 'carberator', 'gas_cap',
+                   'transmission', 'torque_converter', 'clutch_plate',
+                   'pressure_plate', 'oil_pan'],
+        # Exhaust (class 31)
+        'exhaust': ['muffler'],
+        # Suspension / Steering (classes 32, 41, 42, 51)
+        'suspension': ['lower_control_arm', 'idler_arm', 'leaf_spring', 'coil_spring'],
+        # Cooling (classes 14, 20, 21, 22, 28)
+        'radiator': ['radiator', 'radiator_hose', 'radiator_fan',
+                     'overflow_tank', 'water_pump', 'thermostat'],
+        # Interior (classes 19, 33, 61)
+        'interior': ['radio', 'instrument_cluster', 'shift_knob'],
     }
     
     def __init__(

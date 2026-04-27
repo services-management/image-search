@@ -7,6 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 from PIL import Image
 
+import numpy as np
+
 from app.config import settings
 from pipeline.adaptive_preprocessor import AdaptivePreprocessor
 from pipeline.brand_matcher import get_brand_matcher
@@ -25,6 +27,54 @@ from .schemas import (
     SearchResult as SearchResultSchema,
 )
 from pipeline.text_embedding import TextEmbedding
+
+
+# Text-based part category keywords for OCR fallback
+# When YOLO doesn't detect a part, scan OCR text for these keywords
+TEXT_PART_KEYWORDS = {
+    'engine_oil': ['engine oil', 'motor oil', '10w', '5w', '0w', 'synthetic oil', 'castrol', 'mobil 1', 'shell helix'],
+    'air_filter': ['air filter', 'air cleaner', 'intake filter'],
+    'cabin_filter': ['cabin filter', 'pollen filter', 'ac filter'],
+    'fuel_filter': ['fuel filter', 'gasoline filter'],
+    'brake_fluid': ['brake fluid', 'dot 3', 'dot 4', 'dot 5', 'brake oil'],
+    'coolant': ['coolant', 'antifreeze', 'radiator fluid'],
+    'transmission_fluid': ['transmission fluid', 'atf', 'gear oil', 'cvt fluid'],
+    'power_steering_fluid': ['power steering fluid', 'steering oil'],
+    'wiper_blade': ['wiper blade', 'windshield wiper', 'wiper rubber'],
+    'battery': ['battery', 'accumulator', '12v battery'],
+    'spark_plug': ['spark plug', 'ignition plug'],
+    'brake_pad': ['brake pad', 'disc pad'],
+    'oil_filter': ['oil filter'],
+    'tire': ['tire', 'tyre', 'pneumatic'],
+    'serpentine_belt': ['serpentine belt', 'drive belt', 'fan belt'],
+    'timing_belt': ['timing belt', 'cam belt'],
+    'shock_absorber': ['shock absorber', 'shock', 'strut', 'damper'],
+    'headlight': ['headlight', 'headlamp', 'head light'],
+    'taillight': ['taillight', 'tail lamp', 'rear light'],
+    'muffler': ['muffler', 'silencer', 'exhaust'],
+    'radiator': ['radiator'],
+    'alternator': ['alternator', 'generator'],
+    'starter': ['starter', 'starter motor'],
+}
+
+
+def extract_part_type_from_text(text: str) -> Optional[str]:
+    """Extract part category from OCR text using keyword matching.
+    
+    Args:
+        text: OCR extracted text
+        
+    Returns:
+        Part category string if matched, None otherwise
+    """
+    if not text:
+        return None
+    
+    text_lower = text.lower()
+    for category, keywords in TEXT_PART_KEYWORDS.items():
+        if any(kw in text_lower for kw in keywords):
+            return category
+    return None
 
 
 def extract_part_number(text: str) -> Optional[str]:
@@ -220,43 +270,77 @@ async def search_by_image(
         logger.error(f"Error preprocessing image: {e}")
         raise HTTPException(500, "Image preprocessing failed")
     
-    # 3. Run detection and OCR in parallel on PROCESSED image
-    # Both use the same 640x640 enhanced image for consistency
+    # 3. Run detection and OCR in parallel
+    # YOLO uses 640x640 for speed, OCR uses higher-res for text readability
     loop = asyncio.get_event_loop()
     
-    # Run YOLO detection on processed image (640x640, enhanced)
+    # Run YOLO detection on processed image (640x640)
     detection_task = loop.run_in_executor(
         None,
         components.detector.detect,
-        processed  # Use processed image for consistency
-    )
-    
-    # Run OCR on same processed image (640x640, enhanced)
-    ocr_task = loop.run_in_executor(
-        None,
-        components.ocr.extract,
         processed
     )
     
+    # Run OCR on a larger, text-sharpened image (1280x1280)
+    try:
+        ocr_pil = Image.fromarray(processed)
+        ocr_pil = ocr_pil.resize((1280, 1280), Image.Resampling.LANCZOS)
+        # Sharpen specifically for text
+        from PIL import ImageFilter
+        ocr_pil = ocr_pil.filter(ImageFilter.SHARPEN)
+        ocr_image = np.array(ocr_pil)
+    except Exception:
+        ocr_image = processed  # Fallback to processed if resize fails
+    
+    ocr_task = loop.run_in_executor(
+        None,
+        components.ocr.extract_all,
+        ocr_image
+    )
+    
     # Wait for both to complete
-    detection_result, ocr_result = await asyncio.gather(
+    detection_result, ocr_results = await asyncio.gather(
         detection_task, ocr_task
     )
     
     # 4. Build query parameters
     part_type = detection_result.part_type if detection_result else None
     
-    # Extract brand and part number from OCR text
-    ocr_text = ocr_result.text if ocr_result else None
+    # Collect ALL OCR text lines (not just the best one)
+    all_ocr_texts = [r.text for r in ocr_results if r.text] if ocr_results else []
+    ocr_text = ' '.join(all_ocr_texts) if all_ocr_texts else None
+    
+    # Fallback: if YOLO didn't detect a known part, scan OCR text for product keywords
+    if not part_type or part_type == 'unknown':
+        text_part_type = extract_part_type_from_text(ocr_text)
+        if text_part_type:
+            part_type = text_part_type
+            logger.info(f"OCR fallback part_type: {part_type} from text: {ocr_text}")
+    
+    # Find best brand from all OCR results
+    best_brand_result = None
+    if ocr_results:
+        for r in ocr_results:
+            if r.is_brand:
+                best_brand_result = r
+                break
+        if not best_brand_result and ocr_results:
+            best_brand_result = max(ocr_results, key=lambda x: x.confidence)
     brand_name = None
     brand_confidence = 0.0
     part_number = None
     
     if ocr_text:
-        # Match brand
-        brand_name, brand_confidence = components.brand_matcher.match_with_confidence(ocr_text)
-        if brand_name:
-            logger.info(f"Matched brand: {brand_name} (confidence: {brand_confidence:.2f}) from OCR: {ocr_text}")
+        # Use brand from OCR if already matched, otherwise run brand matcher
+        if best_brand_result and best_brand_result.is_brand:
+            brand_name = best_brand_result.text
+            brand_confidence = best_brand_result.confidence
+            logger.info(f"OCR detected brand: {brand_name} (confidence: {brand_confidence:.2f})")
+        else:
+            # Match brand from all text
+            brand_name, brand_confidence = components.brand_matcher.match_with_confidence(ocr_text)
+            if brand_name:
+                logger.info(f"Matched brand: {brand_name} (confidence: {brand_confidence:.2f}) from OCR: {ocr_text}")
         
         # Extract part number (alphanumeric code like BP1234, W712/80)
         part_number = extract_part_number(ocr_text)
@@ -264,10 +348,12 @@ async def search_by_image(
             logger.info(f"Extracted part number: {part_number} from OCR: {ocr_text}")
     
     confidence = 0.0
-    if detection_result or ocr_result:
+    # Calculate overall confidence from best available source
+    ocr_conf = max(r.confidence for r in ocr_results) if ocr_results else 0.0
+    if detection_result or ocr_results:
         confidence = max(
             detection_result.confidence if detection_result else 0,
-            ocr_result.confidence if ocr_result else 0,
+            ocr_conf,
             brand_confidence
         )
     
@@ -328,7 +414,7 @@ async def search_by_image(
     
     # --- Dynamic weight calculation (PDF spec section 8) ---
     yolo_conf = detection_result.confidence if detection_result else 0.0
-    ocr_conf  = ocr_result.confidence if ocr_result else 0.0
+    ocr_conf  = max(r.confidence for r in ocr_results) if ocr_results else 0.0
     
     # OCR confidence gate: if OCR unreliable, zero it out
     if ocr_conf < 0.5:

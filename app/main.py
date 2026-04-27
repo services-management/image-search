@@ -1,11 +1,16 @@
-"""ML Search Service - Main Application Entry Point."""
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import logging
+import os
+# Disable OneDNN/MKL on Windows before any paddle/paddleocr imports
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from .config import settings
-from .api.endpoints import router
+"""ML Search Service - Main Application Entry Point."""
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+import logging  # noqa: E402
+
+from .config import settings  # noqa: E402
+from .api.endpoints import router  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -59,9 +64,11 @@ app = FastAPI(
 )
 
 # CORS middleware
+# Parse comma-separated origins, default to ["*"] if not set
+_origins = settings.CORS_ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

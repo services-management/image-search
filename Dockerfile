@@ -28,6 +28,7 @@ COPY . .
 RUN mkdir -p /app/models /app/data/faiss_index
 
 # Pre-download models during build (optional - reduces startup time)
+
 ARG SKIP_MODEL_DOWNLOAD=false
 RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
         python -c "from ultralytics import YOLO; YOLO('yolov8m.pt')" || echo "YOLO model download skipped"; \

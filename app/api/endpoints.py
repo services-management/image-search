@@ -408,7 +408,7 @@ async def search_by_image(
     except Exception as e:
         logger.error(f"Error generating embedding: {e}")
         raise HTTPException(500, "Embedding generation failed")
-    
+
     # 6. Search FAISS index
     vector_results = components.faiss_index.search(embedding, k=top_k * 2)
     
@@ -438,19 +438,28 @@ async def search_by_image(
     catalog_results = []
     search_params = {"limit": top_k * 2}
     
-    if part_type:
-        search_params["category"] = part_type
-    if brand_name:
-        search_params["brand"] = brand_name
-    if part_number:
-        search_params["name"] = part_number  # Search part number in product name
-    
-    if search_params:
-        try:
+    try:
+        # Resolve YOLO category name → category_id using backend cache
+        if part_type:
+            await components.catalog_client._load_categories()
+            category_id = components.catalog_client.get_category_id(part_type)
+            if category_id:
+                search_params["category_id"] = category_id
+                logger.info(f"Resolved category '{part_type}' → ID {category_id}")
+            else:
+                logger.warning(f"Unknown category '{part_type}' — skipping category filter")
+
+        if brand_name:
+            search_params["brand"] = brand_name
+        if part_number:
+            search_params["name"] = part_number
+
+        if search_params:
             catalog_results = await components.catalog_client.search_by_params(**search_params)
-            logger.info(f"Catalog search found {len(catalog_results)} results with params: {search_params}")
-        except Exception as e:
-            logger.warning(f"Catalog search failed: {e}")
+            logger.info(f"Catalog search found {len(catalog_results)} results")
+    except Exception as e:
+        logger.warning(f"Catalog search failed (API may be down): {e}")
+        catalog_results = []
     
     # 8. Merge results with dynamic weights
     merged_results = components.merger.merge(

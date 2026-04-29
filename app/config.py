@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     
     # FAISS
     FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "")
-    EMBEDDING_DIMENSION: int = 512
+    EMBEDDING_DIMENSION: int = int(os.getenv("EMBEDDING_DIMENSION", "768"))
+    
+    # Text embedding (BGE-M3)
+    TEXT_MODEL: str = os.getenv("TEXT_MODEL", "BAAI/bge-m3")
+    TEXT_EMBEDDING_DIMENSION: int = int(os.getenv("TEXT_EMBEDDING_DIMENSION", "1024"))
     
     # GPU settings
     USE_GPU: bool = os.getenv("USE_GPU", "").lower() == "true"

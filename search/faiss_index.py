@@ -215,6 +215,24 @@ class FAISSIndex:
         
         return added
     
+    def _distance_to_similarity(self, distance: float) -> float:
+        """Convert FAISS distance to similarity score based on metric type.
+
+        For L2: smaller distance = more similar → map to (0, 1] via 1/(1+dist).
+        For inner_product: higher value = more similar → map [-1, 1] to [0, 1].
+
+        Args:
+            distance: Raw distance returned by FAISS.
+
+        Returns:
+            Similarity score in [0, 1] range.
+        """
+        if self.metric == "inner_product":
+            # Normalized embeddings: IP == cosine similarity in [-1, 1]
+            return float(max(0.0, (distance + 1.0) / 2.0))
+        # L2 default
+        return float(1.0 / (1.0 + distance))
+
     def search(
         self,
         query_embedding: np.ndarray,
@@ -244,8 +262,7 @@ class FAISSIndex:
         for dist, idx in zip(distances[0], indices[0]):
             if idx >= 0 and idx in self.id_to_product:
                 product_id = self.id_to_product[idx]
-                # Convert L2 distance to similarity (0-1 scale)
-                similarity = 1 / (1 + dist)
+                similarity = self._distance_to_similarity(dist)
                 results.append((product_id, float(similarity)))
         
         logger.debug(f"Found {len(results)} results")
@@ -277,7 +294,7 @@ class FAISSIndex:
             for dist, idx in zip(distances[i], indices[i]):
                 if idx >= 0 and idx in self.id_to_product:
                     product_id = self.id_to_product[idx]
-                    similarity = 1 / (1 + dist)
+                    similarity = self._distance_to_similarity(dist)
                     results.append((product_id, float(similarity)))
             all_results.append(results)
         

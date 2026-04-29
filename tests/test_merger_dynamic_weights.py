@@ -13,6 +13,10 @@ def _vector(product_id: int, similarity: float = 0.9):
     return (product_id, similarity)
 
 
+def _text(product_id: int, similarity: float = 0.85):
+    return (product_id, similarity)
+
+
 # ---------------------------------------------------------------------------
 # Dynamic weight override
 # ---------------------------------------------------------------------------
@@ -28,23 +32,22 @@ class TestDynamicWeights:
         )
         assert isinstance(results, list)
 
-    def test_beta_zero_drops_catalog_score_to_zero(self):
-        """With beta=0.0, catalog-only products score 0."""
+    def test_beta_zero_drops_text_score_to_zero(self):
+        """With beta=0.0, text-only products score 0."""
         merger = ResultMerger()
-        # Product 1: catalog only, Product 2: vector only
+        # Product 1: catalog only, Product 2: image only, Product 3: text only
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(2, similarity=0.8)],
             0.8,
-            alpha=0.75, beta=0.0, gamma=0.25
+            alpha=0.75, beta=0.0, gamma=0.25,
+            text_results=[_text(3, similarity=0.9)]
         )
-        product_1 = next(r for r in results if r.product_id == 1)
-        product_2 = next(r for r in results if r.product_id == 2)
-        assert product_1.score == 0.0
-        assert product_2.score > 0.0
+        text_result = next(r for r in results if r.product_id == 3)
+        assert text_result.score == 0.0
 
-    def test_alpha_zero_drops_vector_score_to_zero(self):
-        """With alpha=0.0, vector-only products score 0."""
+    def test_alpha_zero_drops_image_score_to_zero(self):
+        """With alpha=0.0, image-only products score 0."""
         merger = ResultMerger()
         results = merger.merge(
             [_catalog(1, score=1.0)],
@@ -56,7 +59,7 @@ class TestDynamicWeights:
         assert product_2.score == 0.0
 
     def test_ocr_fallback_scenario_image_only(self):
-        """OCR conf < 0.5 → alpha=0.75, beta=0.0 → vector product wins."""
+        """OCR conf < 0.5 → alpha=0.75, beta=0.0, gamma=0.25 → image product wins."""
         merger = ResultMerger()
         # Simulate endpoints.py when OCR confidence is low
         alpha, beta, gamma = 0.75, 0.0, 0.25
@@ -67,15 +70,15 @@ class TestDynamicWeights:
             alpha=alpha, beta=beta, gamma=gamma
         )
         catalog_result = next(r for r in results if r.product_id == 10)
-        vector_result = next(r for r in results if r.product_id == 20)
-        # With beta=0 catalog scores 0; vector product should score higher
-        assert vector_result.score > catalog_result.score
+        image_result = next(r for r in results if r.product_id == 20)
+        # image=0.75*0.85=0.638, catalog=0.25*1.0=0.25; image should win
+        assert image_result.score > catalog_result.score
 
-    def test_balanced_scenario_combined_product_wins(self):
-        """alpha=0.4, beta=0.4 — product in both sources should have highest score."""
+    def test_balanced_scenario_hybrid_product_wins(self):
+        """alpha=0.4, beta=0.4, gamma=0.2 — product in both sources should have highest score."""
         merger = ResultMerger()
-        # Product 1: in both catalog and vector
-        # Product 2: vector only
+        # Product 1: in catalog and image
+        # Product 2: image only
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(1, similarity=0.9), _vector(2, similarity=0.95)],
@@ -83,9 +86,9 @@ class TestDynamicWeights:
             alpha=0.4, beta=0.4, gamma=0.2
         )
         product_1 = next(r for r in results if r.product_id == 1)
-        assert product_1.match_type == "combined"
-        # Combined: 0.4*1.0 (catalog) + 0.4*0.9 (vector) = 0.76
-        # Product 2 (vector only): 0.4*0.95 = 0.38
+        assert product_1.match_type == "hybrid"
+        # Hybrid: 0.2*1.0 (catalog) + 0.4*0.9 (image) = 0.56
+        # Product 2 (image only): 0.4*0.95 = 0.38
         assert product_1.score > next(r.score for r in results if r.product_id == 2)
 
     def test_dynamic_weights_override_confidence_threshold_logic(self):
@@ -180,17 +183,17 @@ class TestMatchTypeTagging:
     def test_catalog_only_match_type(self):
         merger = ResultMerger()
         results = merger.merge([_catalog(1)], [], 0.8)
-        assert results[0].match_type == "catalog"
+        assert results[0].match_type == "metadata"
 
     def test_vector_only_match_type(self):
         merger = ResultMerger()
         results = merger.merge([], [_vector(1)], 0.8)
-        assert results[0].match_type == "vector"
+        assert results[0].match_type == "image"
 
-    def test_combined_match_type_when_in_both(self):
+    def test_hybrid_match_type_when_in_both(self):
         merger = ResultMerger()
         results = merger.merge([_catalog(1)], [_vector(1)], 0.8)
-        assert results[0].match_type == "combined"
+        assert results[0].match_type == "hybrid"
 
     def test_match_type_mixed_in_same_result_set(self):
         merger = ResultMerger()
@@ -200,8 +203,8 @@ class TestMatchTypeTagging:
             0.8
         )
         types = {r.product_id: r.match_type for r in results}
-        assert types[1] == "combined"
-        assert types[2] == "vector"
+        assert types[1] == "hybrid"
+        assert types[2] == "image"
 
 
 # ---------------------------------------------------------------------------
@@ -210,20 +213,20 @@ class TestMatchTypeTagging:
 class TestScoreCalculation:
     """Tests for correct score math with dynamic weights."""
 
-    def test_catalog_score_equals_beta_times_catalog_score(self):
-        """catalog product score = beta * catalog_score."""
+    def test_catalog_score_equals_gamma_times_catalog_score(self):
+        """catalog product score = gamma * catalog_score."""
         merger = ResultMerger()
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [],
             0.8,
-            alpha=0.4, beta=0.6, gamma=0.0
+            alpha=0.4, beta=0.0, gamma=0.6
         )
         product = results[0]
-        assert abs(product.score - 0.6) < 0.001  # beta=0.6 * score=1.0
+        assert abs(product.score - 0.6) < 0.001  # gamma=0.6 * score=1.0
 
-    def test_vector_score_equals_alpha_times_similarity(self):
-        """vector product score = alpha * similarity."""
+    def test_image_score_equals_alpha_times_similarity(self):
+        """image product score = alpha * similarity."""
         merger = ResultMerger()
         results = merger.merge(
             [],
@@ -234,17 +237,18 @@ class TestScoreCalculation:
         product = results[0]
         assert abs(product.score - 0.4) < 0.001  # alpha=0.5 * similarity=0.8
 
-    def test_combined_score_is_sum_of_both(self):
-        """combined score = alpha * vector_sim + beta * catalog_score."""
+    def test_hybrid_score_is_sum_of_all(self):
+        """hybrid score = alpha * image_sim + beta * text_sim + gamma * catalog_score."""
         merger = ResultMerger()
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(1, similarity=0.9)],
             0.8,
-            alpha=0.4, beta=0.4, gamma=0.2
+            alpha=0.4, beta=0.3, gamma=0.3,
+            text_results=[_text(1, similarity=0.8)]
         )
         product = results[0]
-        expected = 0.4 * 1.0 + 0.4 * 0.9  # = 0.76
+        expected = 0.4 * 0.9 + 0.3 * 0.8 + 0.3 * 1.0  # = 0.87
         assert abs(product.score - expected) < 0.001
 
     def test_empty_inputs_return_empty_list(self):

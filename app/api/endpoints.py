@@ -409,35 +409,49 @@ async def search_by_image(
         logger.error(f"Error generating embedding: {e}")
         raise HTTPException(500, "Embedding generation failed")
 
-    # 6. Search FAISS index
-    vector_results = components.faiss_index.search(embedding, k=top_k * 2)
-    
-    # --- Dynamic weight calculation (PDF spec section 8) ---
+    # 6. Search FAISS image index
+    image_results = components.faiss_index.search(embedding, k=top_k * 2)
+
+    # 6b. Search FAISS text index (BGE-M3) using OCR text
+    text_results = []
+    if ocr_text:
+        try:
+            text_embedding = await loop.run_in_executor(
+                None,
+                components.text_embedder.encode_text,
+                ocr_text
+            )
+            text_results = components.text_faiss_index.search(text_embedding, k=top_k * 2)
+            logger.info(f"Text FAISS search found {len(text_results)} results")
+        except Exception as e:
+            logger.warning(f"Text FAISS search failed: {e}")
+
+    # --- Dynamic weight calculation (diagram spec) ---
     yolo_conf = detection_result.confidence if detection_result else 0.0
     ocr_conf  = max(r.confidence for r in ocr_results) if ocr_results else 0.0
-    
-    # OCR confidence gate: if OCR unreliable, zero it out
+
+    # OCR confidence gate: if OCR unreliable, zero out text weight
     if ocr_conf < 0.5:
         alpha, beta, gamma = 0.75, 0.0, 0.25   # image-only scenario
     else:
         alpha, beta, gamma = 0.4, 0.4, 0.2     # balanced scenario
-    
+
     # YOLO gate: if YOLO low confidence, don't filter by category
     if yolo_conf < 0.4:
         part_type = None
         logger.info('YOLO confidence low - skipping category filter')
-    
+
     # No-match threshold
     NO_MATCH_THRESHOLD = 0.35
-    if not vector_results:
-        logger.warning('No vector search results found')
-    elif max(r[1] for r in vector_results) < NO_MATCH_THRESHOLD:
-        logger.warning(f'Low similarity scores (max: {max(r[1] for r in vector_results):.3f})')
-    
-    # 7. Search catalog (if we have part type, brand, or part number)
+    if not image_results:
+        logger.warning('No image search results found')
+    elif max(r[1] for r in image_results) < NO_MATCH_THRESHOLD:
+        logger.warning(f'Low image similarity scores (max: {max(r[1] for r in image_results):.3f})')
+
+    # 7. Search catalog metadata (tier 1: exact part_number, tier 2: fuzzy brand, tier 3: category)
     catalog_results = []
     search_params = {"limit": top_k * 2}
-    
+
     try:
         # Resolve YOLO category name → category_id using backend cache
         if part_type:
@@ -460,16 +474,17 @@ async def search_by_image(
     except Exception as e:
         logger.warning(f"Catalog search failed (API may be down): {e}")
         catalog_results = []
-    
-    # 8. Merge results with dynamic weights
+
+    # 8. Merge results with dynamic weights: α·image + β·text + γ·meta
     merged_results = components.merger.merge(
         catalog_results,
-        vector_results,
+        image_results,
         confidence,
         max_results=top_k,
         alpha=alpha,
         beta=beta,
-        gamma=gamma
+        gamma=gamma,
+        text_results=text_results
     )
     
     # 9. Format response

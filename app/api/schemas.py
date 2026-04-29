@@ -15,7 +15,7 @@ class SearchResult(BaseModel):
     """Single search result."""
     product_id: int
     score: float
-    match_type: str  # 'catalog', 'vector', 'combined'
+    match_type: str  # 'image', 'text', 'metadata', 'hybrid'
 
 
 class ImageSearchResponse(BaseModel):

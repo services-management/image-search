@@ -16,7 +16,7 @@ class SearchResult:
     """Single search result with metadata."""
     product_id: int
     score: float
-    match_type: str  # 'catalog', 'vector', 'combined'
+    match_type: str  # 'image', 'text', 'metadata', 'hybrid'
     confidence: float
     source_scores: Optional[Dict[str, float]] = None
 
@@ -55,99 +55,118 @@ class ResultMerger:
     def merge(
         self,
         catalog_results: List[Dict],
-        vector_results: List[tuple],
+        image_results: List[tuple],
         detection_confidence: float,
         max_results: int = 20,
         alpha: Optional[float] = None,
         beta: Optional[float] = None,
-        gamma: Optional[float] = None
+        gamma: Optional[float] = None,
+        text_results: Optional[List[tuple]] = None
     ) -> List[SearchResult]:
-        """Merge catalog and vector search results.
-        
+        """Merge image, text, and catalog search results.
+
+        Implements  α·image_score + β·text_score + γ·meta  re-ranking.
+
         Args:
-            catalog_results: Results from catalog search
-            vector_results: Results from FAISS vector search
+            catalog_results: Results from catalog metadata search
+            image_results: Results from FAISS image (CLIP) index
             detection_confidence: Confidence from YOLO/OCR detection
             max_results: Maximum number of results to return
-            alpha: Dynamic image/vector weight (PDF spec §8). Overrides internal logic if set.
-            beta: Dynamic text/catalog weight (PDF spec §8). Overrides internal logic if set.
-            gamma: Dynamic meta weight (PDF spec §8). Acknowledged but not used separately.
-            
+            alpha: Dynamic image weight. Overrides internal logic if set.
+            beta: Dynamic text weight. Overrides internal logic if set.
+            gamma: Dynamic catalog/meta weight. Overrides internal logic if set.
+            text_results: Results from FAISS text (BGE-M3) index
+
         Returns:
             Merged and ranked list of SearchResult objects
         """
-        # Use dynamic weights from caller if provided (PDF spec §8)
-        # alpha = image signal → vector_weight
-        # beta  = text/OCR signal → catalog_weight
-        # gamma = meta signal (acknowledged, not a separate bucket)
+        text_results = text_results or []
+
+        # Use dynamic weights from caller if provided (diagram spec)
+        # alpha = image_score weight
+        # beta  = text_score weight
+        # gamma = meta (catalog) weight
         if alpha is not None and beta is not None:
-            catalog_weight = beta
-            vector_weight = alpha
+            image_weight = alpha
+            text_weight = beta
+            catalog_weight = gamma if gamma is not None else max(0.0, 1.0 - alpha - beta)
             logger.debug(
-                f"Dynamic weights applied: alpha(vector)={alpha}, "
-                f"beta(catalog)={beta}, gamma(meta)={gamma}"
+                f"Dynamic weights applied: alpha(image)={alpha}, "
+                f"beta(text)={beta}, gamma(meta)={catalog_weight}"
             )
         elif detection_confidence < self.confidence_threshold:
             # Low confidence: rely more on visual similarity
             catalog_weight = self.low_confidence_catalog_weight
-            vector_weight = self.low_confidence_vector_weight
+            image_weight = self.low_confidence_vector_weight
+            text_weight = 0.0
             logger.debug(
                 f"Low confidence ({detection_confidence:.2f}), "
-                f"using weights: catalog={catalog_weight}, vector={vector_weight}"
+                f"using weights: catalog={catalog_weight}, image={image_weight}"
             )
         else:
             catalog_weight = self.catalog_weight
-            vector_weight = self.vector_weight
-        
+            image_weight = self.vector_weight
+            text_weight = 0.0
+
         # Aggregate scores by product ID
-        product_scores = defaultdict(lambda: {"catalog": 0.0, "vector": 0.0})
-        
-        # Add catalog scores
+        product_scores = defaultdict(lambda: {"image": 0.0, "text": 0.0, "catalog": 0.0})
+
+        # Add catalog (metadata) scores
         for result in catalog_results:
             product_id = result.get('product_id')
             if product_id is None:
                 continue
-            # Catalog matches get full weight (score is typically 1.0 for exact match)
             score = result.get('score', 1.0)
             product_scores[product_id]["catalog"] = catalog_weight * score
-        
-        # Add vector scores
-        for product_id, similarity in vector_results:
-            product_scores[product_id]["vector"] = vector_weight * similarity
-        
+
+        # Add image (vector) scores
+        for product_id, similarity in image_results:
+            product_scores[product_id]["image"] = image_weight * similarity
+
+        # Add text scores
+        for product_id, similarity in text_results:
+            product_scores[product_id]["text"] = text_weight * similarity
+
         # Calculate combined scores and determine match types
         results = []
         catalog_ids = {r.get('product_id') for r in catalog_results if r.get('product_id')}
-        vector_ids = {p[0] for p in vector_results}
-        
+        image_ids = {p[0] for p in image_results}
+        text_ids = {p[0] for p in text_results}
+
         for product_id, scores in product_scores.items():
-            combined_score = scores["catalog"] + scores["vector"]
-            
-            # Determine match type
-            in_catalog = product_id in catalog_ids
-            in_vector = product_id in vector_ids
-            
-            if in_catalog and in_vector:
-                match_type = 'combined'
-            elif in_catalog:
-                match_type = 'catalog'
+            combined_score = scores["image"] + scores["text"] + scores["catalog"]
+
+            # Determine match type per diagram: image | text | metadata | hybrid
+            sources = []
+            if product_id in image_ids:
+                sources.append('image')
+            if product_id in text_ids:
+                sources.append('text')
+            if product_id in catalog_ids:
+                sources.append('metadata')
+
+            if len(sources) >= 2:
+                match_type = 'hybrid'
+            elif sources:
+                match_type = sources[0]
             else:
-                match_type = 'vector'
-            
+                match_type = 'unknown'
+
             results.append(SearchResult(
                 product_id=product_id,
                 score=combined_score,
                 match_type=match_type,
                 confidence=detection_confidence,
                 source_scores={
-                    "catalog": scores["catalog"],
-                    "vector": scores["vector"]
+                    "image": scores["image"],
+                    "text": scores["text"],
+                    "catalog": scores["catalog"]
                 }
             ))
-        
+
         # Sort by combined score
         results.sort(key=lambda x: x.score, reverse=True)
-        
+
         # Log top results
         if results:
             top_result = results[0]
@@ -155,25 +174,27 @@ class ResultMerger:
                 f"Top result: product_id={top_result.product_id}, "
                 f"score={top_result.score:.3f}, match_type={top_result.match_type}"
             )
-        
+
         return results[:max_results]
     
     def merge_with_diversity(
         self,
         catalog_results: List[Dict],
-        vector_results: List[tuple],
+        image_results: List[tuple],
         detection_confidence: float,
         max_results: int = 20,
-        diversity_threshold: float = 0.8
+        diversity_threshold: float = 0.8,
+        text_results: Optional[List[tuple]] = None
     ) -> List[SearchResult]:
         """Merge results with diversity to avoid similar products.
         
         Args:
             catalog_results: Results from catalog search
-            vector_results: Results from FAISS vector search
+            image_results: Results from FAISS image index
             detection_confidence: Confidence from YOLO/OCR detection
             max_results: Maximum number of results to return
             diversity_threshold: Minimum score difference to include
+            text_results: Results from FAISS text index
             
         Returns:
             Diversified list of SearchResult objects
@@ -181,9 +202,10 @@ class ResultMerger:
         # Get initial merged results
         all_results = self.merge(
             catalog_results,
-            vector_results,
+            image_results,
             detection_confidence,
-            max_results * 2  # Get more to allow filtering
+            max_results=max_results * 2,  # Get more to allow filtering
+            text_results=text_results
         )
         
         if not all_results:

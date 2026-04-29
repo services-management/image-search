@@ -346,34 +346,34 @@ class TestResultMerger:
         results = merger.merge(catalog_results, [], 0.8)
         
         assert len(results) == 2
-        assert all(r.match_type == 'catalog' for r in results)
+        assert all(r.match_type == 'metadata' for r in results)
     
-    def test_merge_vector_only(self):
-        """Test merging vector results only."""
+    def test_merge_image_only(self):
+        """Test merging image (vector) results only."""
         from search.merger import ResultMerger
         
         merger = ResultMerger()
-        vector_results = [(1, 0.9), (2, 0.8)]
+        image_results = [(1, 0.9), (2, 0.8)]
         
-        results = merger.merge([], vector_results, 0.8)
+        results = merger.merge([], image_results, 0.8)
         
         assert len(results) == 2
-        assert all(r.match_type == 'vector' for r in results)
+        assert all(r.match_type == 'image' for r in results)
     
-    def test_merge_combined(self):
+    def test_merge_hybrid(self):
         """Test merging both result types."""
         from search.merger import ResultMerger
         
         merger = ResultMerger()
         catalog_results = [{"product_id": 1, "score": 1.0}]
-        vector_results = [(1, 0.9), (2, 0.8)]
+        image_results = [(1, 0.9), (2, 0.8)]
         
-        results = merger.merge(catalog_results, vector_results, 0.8, max_results=10)
+        results = merger.merge(catalog_results, image_results, 0.8, max_results=10)
         
         assert len(results) == 2
-        # Product 1 should have combined match type
+        # Product 1 should have hybrid match type
         product_1 = next(r for r in results if r.product_id == 1)
-        assert product_1.match_type == 'combined'
+        assert product_1.match_type == 'hybrid'
     
     def test_low_confidence_weighting(self):
         """Test that low confidence changes weights."""

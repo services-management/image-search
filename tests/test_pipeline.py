@@ -329,7 +329,7 @@ class TestResultMerger:
         from search.merger import ResultMerger
         
         merger = ResultMerger()
-        results = merger.merge([], [], [], 0.8)
+        results = merger.merge([], [], 0.8)
         
         assert results == []
     
@@ -343,7 +343,7 @@ class TestResultMerger:
             {"product_id": 2, "score": 1.0}
         ]
         
-        results = merger.merge(catalog_results, [], [], 0.8)
+        results = merger.merge(catalog_results, [], 0.8)
         
         assert len(results) == 2
         assert all(r.match_type == 'metadata' for r in results)
@@ -355,11 +355,7 @@ class TestResultMerger:
         merger = ResultMerger()
         image_results = [(1, 0.9), (2, 0.8)]
         
-<<<<<<< Updated upstream
         results = merger.merge([], image_results, 0.8)
-=======
-        results = merger.merge([], vector_results, [], 0.8)
->>>>>>> Stashed changes
         
         assert len(results) == 2
         assert all(r.match_type == 'image' for r in results)
@@ -372,11 +368,7 @@ class TestResultMerger:
         catalog_results = [{"product_id": 1, "score": 1.0}]
         image_results = [(1, 0.9), (2, 0.8)]
         
-<<<<<<< Updated upstream
         results = merger.merge(catalog_results, image_results, 0.8, max_results=10)
-=======
-        results = merger.merge(catalog_results, vector_results, [], 0.8, max_results=10)
->>>>>>> Stashed changes
         
         assert len(results) == 2
         # Product 1 should have hybrid match type
@@ -393,10 +385,10 @@ class TestResultMerger:
         vector_results = [(2, 0.9)]
         
         # High confidence
-        high_conf_results = merger.merge(catalog_results, vector_results, [], 0.8)
+        high_conf_results = merger.merge(catalog_results, vector_results, 0.8)
         
         # Low confidence - should weight vector higher
-        low_conf_results = merger.merge(catalog_results, vector_results, [], 0.3)
+        low_conf_results = merger.merge(catalog_results, vector_results, 0.3)
         
         # Product 2 (image only) should score higher with low confidence
         low_conf_image_score = next(
@@ -420,7 +412,7 @@ class TestFormatResults:
         catalog_results = [{"product_id": 1, "score": 1.0}]
         vector_results = [(2, 0.9)]
         
-        results = merger.merge(catalog_results, vector_results, [], 0.8)
+        results = merger.merge(catalog_results, vector_results, 0.8)
         formatted = format_results_for_response(results)
         
         assert len(formatted) == 2
@@ -437,7 +429,7 @@ class TestFormatResults:
         vector_results = []
         products_data = {1: {"name": "Test Product", "price": 100}}
         
-        results = merger.merge(catalog_results, vector_results, [], 0.8)
+        results = merger.merge(catalog_results, vector_results, 0.8)
         formatted = format_results_for_response(results, products_data)
         
         assert formatted[0]['product']['name'] == "Test Product"

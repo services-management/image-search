@@ -410,15 +410,9 @@ async def search_by_image(
         raise HTTPException(500, "Embedding generation failed")
 
     # 6. Search FAISS image index
-<<<<<<< Updated upstream
     image_results = components.faiss_index.search(embedding, k=top_k * 2)
 
     # 6b. Search FAISS text index (BGE-M3) using OCR text
-=======
-    vector_results = components.faiss_index.search(embedding, k=top_k * 2)
-    
-    # 6b. Generate text embedding from OCR and search text FAISS index
->>>>>>> Stashed changes
     text_results = []
     if ocr_text:
         try:
@@ -430,15 +424,9 @@ async def search_by_image(
             text_results = components.text_faiss_index.search(text_embedding, k=top_k * 2)
             logger.info(f"Text FAISS search found {len(text_results)} results")
         except Exception as e:
-<<<<<<< Updated upstream
             logger.warning(f"Text FAISS search failed: {e}")
 
     # --- Dynamic weight calculation (diagram spec) ---
-=======
-            logger.warning(f"Text embedding/search failed: {e}")
-    
-    # --- Dynamic weight calculation (PDF spec section 8) ---
->>>>>>> Stashed changes
     yolo_conf = detection_result.confidence if detection_result else 0.0
     ocr_conf  = max(r.confidence for r in ocr_results) if ocr_results else 0.0
 
@@ -486,20 +474,11 @@ async def search_by_image(
     except Exception as e:
         logger.warning(f"Catalog search failed (API may be down): {e}")
         catalog_results = []
-<<<<<<< Updated upstream
 
     # 8. Merge results with dynamic weights: α·image + β·text + γ·meta
     merged_results = components.merger.merge(
         catalog_results,
         image_results,
-=======
-    
-    # 8. Merge results with dynamic weights (α=image, β=text, γ=metadata/catalog)
-    merged_results = components.merger.merge(
-        catalog_results,
-        vector_results,
-        text_results,
->>>>>>> Stashed changes
         confidence,
         max_results=top_k,
         alpha=alpha,

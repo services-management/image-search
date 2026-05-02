@@ -410,9 +410,15 @@ async def search_by_image(
         raise HTTPException(500, "Embedding generation failed")
 
     # 6. Search FAISS image index
+<<<<<<< Updated upstream
     image_results = components.faiss_index.search(embedding, k=top_k * 2)
 
     # 6b. Search FAISS text index (BGE-M3) using OCR text
+=======
+    vector_results = components.faiss_index.search(embedding, k=top_k * 2)
+    
+    # 6b. Generate text embedding from OCR and search text FAISS index
+>>>>>>> Stashed changes
     text_results = []
     if ocr_text:
         try:
@@ -424,9 +430,15 @@ async def search_by_image(
             text_results = components.text_faiss_index.search(text_embedding, k=top_k * 2)
             logger.info(f"Text FAISS search found {len(text_results)} results")
         except Exception as e:
+<<<<<<< Updated upstream
             logger.warning(f"Text FAISS search failed: {e}")
 
     # --- Dynamic weight calculation (diagram spec) ---
+=======
+            logger.warning(f"Text embedding/search failed: {e}")
+    
+    # --- Dynamic weight calculation (PDF spec section 8) ---
+>>>>>>> Stashed changes
     yolo_conf = detection_result.confidence if detection_result else 0.0
     ocr_conf  = max(r.confidence for r in ocr_results) if ocr_results else 0.0
 
@@ -474,11 +486,20 @@ async def search_by_image(
     except Exception as e:
         logger.warning(f"Catalog search failed (API may be down): {e}")
         catalog_results = []
+<<<<<<< Updated upstream
 
     # 8. Merge results with dynamic weights: α·image + β·text + γ·meta
     merged_results = components.merger.merge(
         catalog_results,
         image_results,
+=======
+    
+    # 8. Merge results with dynamic weights (α=image, β=text, γ=metadata/catalog)
+    merged_results = components.merger.merge(
+        catalog_results,
+        vector_results,
+        text_results,
+>>>>>>> Stashed changes
         confidence,
         max_results=top_k,
         alpha=alpha,
@@ -487,10 +508,24 @@ async def search_by_image(
         text_results=text_results
     )
     
-    # 9. Format response
+    # 9. Fetch product names from catalog for enrichment
+    product_names = {}
+    if merged_results:
+        try:
+            product_ids = [r.product_id for r in merged_results]
+            products_data = await components.catalog_client.get_products_by_ids(product_ids)
+            product_names = {
+                pid: data.get("name", data.get("product_name", "Unknown"))
+                for pid, data in products_data.items()
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch product names: {e}")
+    
+    # 10. Format response
     results = [
         SearchResultSchema(
             product_id=r.product_id,
+            name=product_names.get(r.product_id),
             score=round(r.score, 3),
             match_type=r.match_type
         )

@@ -17,7 +17,7 @@ class CLIPEmbedding:
     
     def __init__(
         self,
-        model_name: str = "openai/clip-vit-base-patch32",
+        model_name: str = "openai/clip-vit-large-patch14",
         use_gpu: bool = False
     ):
         """Initialize the CLIP embedding generator.
@@ -208,7 +208,7 @@ class CLIPEmbedding:
         """
         # Different CLIP models have different dimensions
         # clip-vit-base-patch32: 512
-        # clip-vit-large-patch14: 768
+        # clip-vit-large-patch14: 768 (default)
         return self.model.config.projection_dim
 
 
@@ -228,4 +228,4 @@ def get_clip_model_dimension(model_name: str) -> int:
         "openai/clip-vit-large-patch14": 768,
         "openai/clip-vit-large-patch14-336": 768,
     }
-    return dimensions.get(model_name, 512)
+    return dimensions.get(model_name, 768)

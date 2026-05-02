@@ -39,19 +39,19 @@ class YOLOPartDetector:
         'spoiler': ['spoiler'],
         # Braking (classes 36, 46, 48, 52)
         'brake': ['brake_pad', 'brake_rotor', 'brake_caliper', 'vacuum_brake_booster'],
-        # Filters (class 23)
-        'filter': ['oil_filter'],
+        # Filters (classes 23, 67)
+        'filter': ['oil_filter', 'air_filter', 'gasoline_filter'],
         # Battery / Electrical (classes 17, 37, 39, 44, 55, 56, 57, 59)
         'battery': ['battery'],
         'alternator': ['alternator', 'starter', 'ignition_coil', 'spark_plug',
                        'distributor', 'oxygen_sensor', 'oil_pressure_sensor',
                        'fuse_box', 'air_compressor'],
-        # Engine / Powertrain (classes 18, 25, 27, 29, 30, 35, 40, 43, 45, 47, 49, 50, 53, 54)
+        # Engine / Powertrain (classes 18, 25, 27, 29, 30, 35, 40, 43, 45, 47, 49, 50, 53, 54, 68, 71, 72)
         'engine': ['piston', 'engine_block', 'cylinder_head', 'camshaft',
                    'crankshaft', 'engine_valve', 'valve_lifter',
                    'fuel_injector', 'carberator', 'gas_cap',
                    'transmission', 'torque_converter', 'clutch_plate',
-                   'pressure_plate', 'oil_pan'],
+                   'pressure_plate', 'oil_pan', 'bearing', 'chain', 'clutch'],
         # Exhaust (class 31)
         'exhaust': ['muffler'],
         # Suspension / Steering (classes 32, 41, 42, 51)

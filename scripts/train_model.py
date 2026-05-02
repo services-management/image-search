@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import os
 
 def train_model(args):
     """Train the YOLO model."""
@@ -33,8 +34,26 @@ def train_model(args):
     model_name = model_sizes.get(args.model, f'yolov8{args.model}.pt')
     print(f"Using model: {model_name}")
     
-    # Load model
-    model = YOLO(model_name)
+    # Load model (resume from checkpoint if requested)
+    if args.resume:
+        # Search for last.pt in possible locations (handles nested project paths)
+        possible_paths = [
+            f"{args.project}/{args.name}/weights/last.pt",
+            f"{args.project}/{args.project}/{args.name}/weights/last.pt",
+        ]
+        checkpoint_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                checkpoint_path = path
+                break
+        if checkpoint_path is None:
+            raise FileNotFoundError(
+                f"Could not find last.pt in any of: {possible_paths}"
+            )
+        print(f"Resuming from: {checkpoint_path}")
+        model = YOLO(checkpoint_path)
+    else:
+        model = YOLO(model_name)
     
     # Dataset configuration
     if args.data:
@@ -102,6 +121,7 @@ def train_model(args):
         # Additional settings
         verbose=True,         # Verbose output
         exist_ok=True,        # Overwrite existing project
+        resume=args.resume,   # Resume from checkpoint
     )
     
     print("\n" + "="*60)
@@ -168,6 +188,8 @@ def main():
     # Export
     parser.add_argument('--export', action='store_true',
                        help='Export model to ONNX after training')
+    parser.add_argument('--resume', action='store_true',
+                       help='Resume training from last checkpoint')
     
     args = parser.parse_args()
     

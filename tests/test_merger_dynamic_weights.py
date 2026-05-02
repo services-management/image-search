@@ -13,7 +13,11 @@ def _vector(product_id: int, similarity: float = 0.9):
     return (product_id, similarity)
 
 
+<<<<<<< Updated upstream
 def _text(product_id: int, similarity: float = 0.85):
+=======
+def _text(product_id: int, similarity: float = 0.9):
+>>>>>>> Stashed changes
     return (product_id, similarity)
 
 
@@ -27,21 +31,33 @@ class TestDynamicWeights:
         """merge() should not raise when alpha/beta/gamma are passed."""
         merger = ResultMerger()
         results = merger.merge(
-            [_catalog(1)], [_vector(2)], 0.8,
-            alpha=0.75, beta=0.0, gamma=0.25
+            [_catalog(1)], [_vector(2)], [], 0.8,
+            alpha=0.55, beta=0.0, gamma=0.25
         )
         assert isinstance(results, list)
 
+<<<<<<< Updated upstream
     def test_beta_zero_drops_text_score_to_zero(self):
         """With beta=0.0, text-only products score 0."""
         merger = ResultMerger()
         # Product 1: catalog only, Product 2: image only, Product 3: text only
+=======
+    def test_gamma_zero_drops_catalog_score_to_zero(self):
+        """With gamma=0.0, catalog-only products score 0."""
+        merger = ResultMerger()
+        # Product 1: catalog only, Product 2: image only
+>>>>>>> Stashed changes
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(2, similarity=0.8)],
+            [],
             0.8,
+<<<<<<< Updated upstream
             alpha=0.75, beta=0.0, gamma=0.25,
             text_results=[_text(3, similarity=0.9)]
+=======
+            alpha=0.75, beta=0.0, gamma=0.0
+>>>>>>> Stashed changes
         )
         text_result = next(r for r in results if r.product_id == 3)
         assert text_result.score == 0.0
@@ -52,25 +68,32 @@ class TestDynamicWeights:
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(2, similarity=0.9)],
+            [],
             0.8,
-            alpha=0.0, beta=1.0, gamma=0.0
+            alpha=0.0, beta=0.0, gamma=1.0
         )
         product_2 = next(r for r in results if r.product_id == 2)
         assert product_2.score == 0.0
 
     def test_ocr_fallback_scenario_image_only(self):
+<<<<<<< Updated upstream
         """OCR conf < 0.5 → alpha=0.75, beta=0.0, gamma=0.25 → image product wins."""
+=======
+        """OCR conf < 0.5 → alpha=0.75, gamma=0.0 → image product wins."""
+>>>>>>> Stashed changes
         merger = ResultMerger()
         # Simulate endpoints.py when OCR confidence is low
-        alpha, beta, gamma = 0.75, 0.0, 0.25
+        alpha, beta, gamma = 0.75, 0.0, 0.0
         results = merger.merge(
             [_catalog(10, score=1.0)],
             [_vector(20, similarity=0.85)],
+            [],
             0.3,
             alpha=alpha, beta=beta, gamma=gamma
         )
         catalog_result = next(r for r in results if r.product_id == 10)
         image_result = next(r for r in results if r.product_id == 20)
+<<<<<<< Updated upstream
         # image=0.75*0.85=0.638, catalog=0.25*1.0=0.25; image should win
         assert image_result.score > catalog_result.score
 
@@ -78,12 +101,22 @@ class TestDynamicWeights:
         """alpha=0.4, beta=0.4, gamma=0.2 — product in both sources should have highest score."""
         merger = ResultMerger()
         # Product 1: in catalog and image
+=======
+        # With gamma=0 catalog scores 0; image product should score higher
+        assert image_result.score > catalog_result.score
+
+    def test_balanced_scenario_hybrid_product_wins(self):
+        """alpha=0.4, gamma=0.2 — product in both sources should have highest score."""
+        merger = ResultMerger()
+        # Product 1: in both catalog and image
+>>>>>>> Stashed changes
         # Product 2: image only
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(1, similarity=0.9), _vector(2, similarity=0.95)],
+            [],
             0.8,
-            alpha=0.4, beta=0.4, gamma=0.2
+            alpha=0.4, beta=0.0, gamma=0.2
         )
         product_1 = next(r for r in results if r.product_id == 1)
         assert product_1.match_type == "hybrid"
@@ -92,17 +125,18 @@ class TestDynamicWeights:
         assert product_1.score > next(r.score for r in results if r.product_id == 2)
 
     def test_dynamic_weights_override_confidence_threshold_logic(self):
-        """When alpha/beta passed, internal confidence threshold is NOT used."""
+        """When alpha/beta/gamma passed, internal confidence threshold is NOT used."""
         merger = ResultMerger(
             catalog_weight=0.9,
             vector_weight=0.1,
             confidence_threshold=0.5
         )
-        # Even with high confidence (0.9), pass alpha=0.0, beta=0.0
+        # Even with high confidence (0.9), pass alpha=0.0, beta=0.0, gamma=0.0
         # → all scores should be 0
         results = merger.merge(
             [_catalog(1)],
             [_vector(2)],
+            [],
             0.9,
             alpha=0.0, beta=0.0, gamma=0.0
         )
@@ -110,26 +144,28 @@ class TestDynamicWeights:
             assert r.score == 0.0
 
     def test_dynamic_weights_with_none_falls_back_to_confidence(self):
-        """Not passing alpha/beta falls back to confidence-based weighting."""
+        """Not passing alpha/beta/gamma falls back to confidence-based weighting."""
         merger = ResultMerger(confidence_threshold=0.5)
         # Low confidence — should trigger low_confidence weights without error
         results = merger.merge(
             [_catalog(1)],
             [_vector(2)],
+            [],
             0.2  # No alpha/beta/gamma passed
         )
         assert isinstance(results, list)
         assert len(results) == 2
 
     def test_partial_alpha_only_falls_back_to_confidence(self):
-        """Passing only alpha (no beta) should fall back to confidence logic."""
+        """Passing only alpha (no beta/gamma) should fall back to confidence logic."""
         merger = ResultMerger()
-        # Only alpha passed, beta is None → should NOT crash, use fallback
+        # Only alpha passed, beta/gamma is None → should NOT crash, use fallback
         results = merger.merge(
             [_catalog(1)],
             [_vector(2)],
+            [],
             0.8,
-            alpha=0.5  # beta not passed
+            alpha=0.5  # beta/gamma not passed
         )
         assert isinstance(results, list)
 
@@ -148,20 +184,20 @@ class TestMergerSortingAndLimits:
             _vector(3, 0.7),
             _vector(4, 0.3),
         ]
-        results = merger.merge([], vector_results, 0.8)
+        results = merger.merge([], vector_results, [], 0.8)
         scores = [r.score for r in results]
         assert scores == sorted(scores, reverse=True)
 
     def test_max_results_respected(self):
         merger = ResultMerger()
         vector_results = [_vector(i, 0.9 - i * 0.05) for i in range(1, 21)]
-        results = merger.merge([], vector_results, 0.8, max_results=5)
+        results = merger.merge([], vector_results, [], 0.8, max_results=5)
         assert len(results) == 5
 
     def test_max_results_default_is_20(self):
         merger = ResultMerger()
         vector_results = [_vector(i, 0.9) for i in range(1, 31)]
-        results = merger.merge([], vector_results, 0.8)
+        results = merger.merge([], vector_results, [], 0.8)
         assert len(results) <= 20
 
     def test_top_result_is_highest_score(self):
@@ -169,6 +205,7 @@ class TestMergerSortingAndLimits:
         results = merger.merge(
             [],
             [_vector(1, 0.5), _vector(2, 0.99), _vector(3, 0.75)],
+            [],
             0.8
         )
         assert results[0].product_id == 2
@@ -180,19 +217,42 @@ class TestMergerSortingAndLimits:
 class TestMatchTypeTagging:
     """Tests for correct match_type assignment."""
 
-    def test_catalog_only_match_type(self):
+    def test_metadata_only_match_type(self):
         merger = ResultMerger()
+<<<<<<< Updated upstream
         results = merger.merge([_catalog(1)], [], 0.8)
+=======
+        results = merger.merge([_catalog(1)], [], [], 0.8)
+>>>>>>> Stashed changes
         assert results[0].match_type == "metadata"
 
-    def test_vector_only_match_type(self):
+    def test_image_only_match_type(self):
         merger = ResultMerger()
+<<<<<<< Updated upstream
         results = merger.merge([], [_vector(1)], 0.8)
         assert results[0].match_type == "image"
 
     def test_hybrid_match_type_when_in_both(self):
         merger = ResultMerger()
         results = merger.merge([_catalog(1)], [_vector(1)], 0.8)
+=======
+        results = merger.merge([], [_vector(1)], [], 0.8)
+        assert results[0].match_type == "image"
+
+    def test_text_only_match_type(self):
+        merger = ResultMerger()
+        results = merger.merge([], [], [_text(1)], 0.8)
+        assert results[0].match_type == "text"
+
+    def test_hybrid_match_type_when_in_both(self):
+        merger = ResultMerger()
+        results = merger.merge([_catalog(1)], [_vector(1)], [], 0.8)
+        assert results[0].match_type == "hybrid"
+
+    def test_hybrid_with_all_three_sources(self):
+        merger = ResultMerger()
+        results = merger.merge([_catalog(1)], [_vector(1)], [_text(1)], 0.8)
+>>>>>>> Stashed changes
         assert results[0].match_type == "hybrid"
 
     def test_match_type_mixed_in_same_result_set(self):
@@ -200,6 +260,7 @@ class TestMatchTypeTagging:
         results = merger.merge(
             [_catalog(1)],
             [_vector(1, 0.9), _vector(2, 0.7)],
+            [],
             0.8
         )
         types = {r.product_id: r.match_type for r in results}
@@ -219,6 +280,7 @@ class TestScoreCalculation:
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [],
+            [],
             0.8,
             alpha=0.4, beta=0.0, gamma=0.6
         )
@@ -231,8 +293,9 @@ class TestScoreCalculation:
         results = merger.merge(
             [],
             [_vector(1, similarity=0.8)],
+            [],
             0.8,
-            alpha=0.5, beta=0.3, gamma=0.2
+            alpha=0.5, beta=0.0, gamma=0.0
         )
         product = results[0]
         assert abs(product.score - 0.4) < 0.001  # alpha=0.5 * similarity=0.8
@@ -243,15 +306,23 @@ class TestScoreCalculation:
         results = merger.merge(
             [_catalog(1, score=1.0)],
             [_vector(1, similarity=0.9)],
+            [_text(1, similarity=0.85)],
             0.8,
+<<<<<<< Updated upstream
             alpha=0.4, beta=0.3, gamma=0.3,
             text_results=[_text(1, similarity=0.8)]
         )
         product = results[0]
         expected = 0.4 * 0.9 + 0.3 * 0.8 + 0.3 * 1.0  # = 0.87
+=======
+            alpha=0.4, beta=0.3, gamma=0.3
+        )
+        product = results[0]
+        expected = 0.4 * 0.9 + 0.3 * 0.85 + 0.3 * 1.0  # = 0.915
+>>>>>>> Stashed changes
         assert abs(product.score - expected) < 0.001
 
     def test_empty_inputs_return_empty_list(self):
         merger = ResultMerger()
-        results = merger.merge([], [], 0.8, alpha=0.4, beta=0.4, gamma=0.2)
+        results = merger.merge([], [], [], 0.8, alpha=0.4, beta=0.4, gamma=0.2)
         assert results == []

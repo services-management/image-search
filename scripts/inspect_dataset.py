@@ -1,14 +1,15 @@
 #!/usr/bin/env python
-"""Inspect combined_car_parts dataset — sample images from each part_X class."""
+"""Inspect combined_car_parts dataset — sample images from each class."""
 
 import shutil
 import random
 from pathlib import Path
+import yaml
 
 
 def inspect_dataset(
-    base_path: str = r"C:\Users\HP Omen 16\.vscode\fix3\ml_service\datasets\combined_car_parts",
-    output_path: str = r"C:\Users\HP Omen 16\.vscode\fix3\ml_service\datasets\combined_car_parts\temp_inspect",
+    base_path: str = r"C:\Users\HP Omen 16\.vscode\fix3\ml_service\ml_datasets\combined_car_parts",
+    output_path: str = r"C:\Users\HP Omen 16\.vscode\fix3\ml_service\ml_datasets\combined_car_parts\temp_inspect",
     samples_per_class: int = 10,
 ):
     """Sample random images for each class and copy to inspection folder."""
@@ -18,8 +19,21 @@ def inspect_dataset(
     output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Read class names from data.yaml
+    yaml_path = base / "data.yaml"
+    class_names = []
+    if yaml_path.exists():
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            names = data.get("names", {})
+            if isinstance(names, dict):
+                class_names = [names[i] for i in sorted(names.keys())]
+            elif isinstance(names, list):
+                class_names = names
+    num_classes = len(class_names) if class_names else 66
+
     # Build class-to-image mapping
-    class_images = {i: [] for i in range(63)}
+    class_images = {i: [] for i in range(num_classes)}
 
     print("Scanning label files...")
     for label_file in label_dir.glob("*.txt"):
@@ -39,8 +53,9 @@ def inspect_dataset(
     print("=" * 50)
     for cls_id in sorted(class_images.keys()):
         count = len(class_images[cls_id])
+        name = class_names[cls_id] if cls_id < len(class_names) else f"class_{cls_id}"
         if count > 0:
-            print(f"  Class {cls_id:2d}: {count:5d} images")
+            print(f"  Class {cls_id:2d} ({name:20s}): {count:5d} images")
 
     # Sample and copy images for inspection
     print("\n" + "=" * 50)
@@ -70,7 +85,8 @@ def inspect_dataset(
                     copied += 1
                     break
 
-        print(f"  Class {cls_id:2d}: {copied}/{samples_per_class} sampled → {part_folder}")
+        name = class_names[cls_id] if cls_id < len(class_names) else f"class_{cls_id}"
+        print(f"  Class {cls_id:2d} ({name:20s}): {copied}/{samples_per_class} sampled")
 
     print(f"\nInspection complete. View samples at: {output_dir.resolve()}")
 

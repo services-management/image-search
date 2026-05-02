@@ -390,15 +390,15 @@ class TestResultMerger:
         # Low confidence - should weight vector higher
         low_conf_results = merger.merge(catalog_results, vector_results, 0.3)
         
-        # Product 2 (vector only) should score higher with low confidence
-        low_conf_vector_score = next(
+        # Product 2 (image only) should score higher with low confidence
+        low_conf_image_score = next(
             r.score for r in low_conf_results if r.product_id == 2
         )
-        high_conf_vector_score = next(
+        high_conf_image_score = next(
             r.score for r in high_conf_results if r.product_id == 2
         )
         
-        assert low_conf_vector_score > high_conf_vector_score
+        assert low_conf_image_score > high_conf_image_score
 
 
 class TestFormatResults:

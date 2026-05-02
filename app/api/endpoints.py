@@ -487,10 +487,24 @@ async def search_by_image(
         text_results=text_results
     )
     
-    # 9. Format response
+    # 9. Fetch product names from catalog for enrichment
+    product_names = {}
+    if merged_results:
+        try:
+            product_ids = [r.product_id for r in merged_results]
+            products_data = await components.catalog_client.get_products_by_ids(product_ids)
+            product_names = {
+                pid: data.get("name", data.get("product_name", "Unknown"))
+                for pid, data in products_data.items()
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch product names: {e}")
+    
+    # 10. Format response
     results = [
         SearchResultSchema(
             product_id=r.product_id,
+            name=product_names.get(r.product_id),
             score=round(r.score, 3),
             match_type=r.match_type
         )

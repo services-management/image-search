@@ -14,6 +14,7 @@ class ImageSearchQuery(BaseModel):
 class SearchResult(BaseModel):
     """Single search result."""
     product_id: int
+    name: Optional[str] = None
     score: float
     match_type: str  # 'image', 'text', 'metadata', 'hybrid'
 

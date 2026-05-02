@@ -96,6 +96,8 @@ class ResultMerger:
             )
         elif detection_confidence < self.confidence_threshold:
             # Low confidence: rely more on visual similarity
+            image_weight = self.low_confidence_vector_weight
+            text_weight = 0.2
             catalog_weight = self.low_confidence_catalog_weight
             image_weight = self.low_confidence_vector_weight
             text_weight = 0.0
@@ -104,6 +106,8 @@ class ResultMerger:
                 f"using weights: catalog={catalog_weight}, image={image_weight}"
             )
         else:
+            image_weight = self.vector_weight
+            text_weight = 0.2
             catalog_weight = self.catalog_weight
             image_weight = self.vector_weight
             text_weight = 0.0

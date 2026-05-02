@@ -2,24 +2,61 @@
 """
 Car Parts Dataset Download Script
 
-This script downloads and prepares multiple car parts datasets for training.
-Datasets included:
-- CompCars (27,618 car parts images)
-- Carparts-seg (3,833 images)
-- Stanford Cars (16,185 images)
-- Roboflow Car Parts (optional)
+Downloads recommended Roboflow datasets to expand training data.
+Datasets:
+- team-data/car-parts-ybiev (8,739 images, pre-trained model)
+- waste/brake-pad-vpcfl (1,638 brake pad images)
+- royalewithcheese/spark_plug (247 spark plug images)
+- penguin/machine-parts-bwqjl (1,000+ machine parts)
 
 Usage:
+    export ROBOFLOW_API_KEY="your_key"
     python scripts/download_datasets.py
+
+Get API key: https://app.roboflow.com/settings/api
 """
 
+import os
 import subprocess
 import zipfile
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env file if present
+load_dotenv()
+
 # Dataset configuration
-DATASETS_DIR = Path("datasets")
-DATASETS_DIR.mkdir(exist_ok=True)
+ML_DATASETS_DIR = Path("ml_datasets")
+ML_DATASETS_DIR.mkdir(exist_ok=True)
+
+# Recommended Roboflow datasets
+ROBOFLOW_DATASETS = [
+    {
+        "workspace": "team-data",
+        "project": "car-parts-ybiev",
+        "version": 1,
+        "desc": "Car Parts (8,739 images, pre-trained)",
+    },
+    {
+        "workspace": "waste-t3zae",
+        "project": "brake-pad-vpcfl",
+        "version": 2,
+        "desc": "Brake Pad v2 (1,638 images)",
+    },
+    {
+        "workspace": "royalewithcheese",
+        "project": "spark_plug",
+        "version": 1,
+        "desc": "Spark Plug (247 images)",
+    },
+    {
+        "workspace": "penguin-wxcxp",
+        "project": "machine-parts-bwqjl",
+        "version": 1,
+        "desc": "Machine Parts (1,000+ images)",
+    },
+]
 
 
 def run_command(cmd, cwd=None):
@@ -29,31 +66,64 @@ def run_command(cmd, cwd=None):
     return result.returncode == 0
 
 
+def download_with_roboflow(workspace: str, project: str, version: int, desc: str) -> bool:
+    """Download a dataset from Roboflow using the Python API."""
+    print("\n" + "="*50)
+    print(f"Downloading: {desc}")
+    print("="*50)
+
+    target_dir = ML_DATASETS_DIR / f"{project}"
+    if target_dir.exists() and any(target_dir.iterdir()):
+        print(f"  {target_dir} already exists. Skipping...")
+        return True
+
+    api_key = os.environ.get("ROBOFLOW_API_KEY")
+    if not api_key:
+        print("  ERROR: ROBOFLOW_API_KEY not set!")
+        print("  Get your key at: https://app.roboflow.com/settings/api")
+        print("  Then run: export ROBOFLOW_API_KEY='your_key'")
+        return False
+
+    try:
+        from roboflow import Roboflow
+
+        rf = Roboflow(api_key=api_key)
+        proj = rf.workspace(workspace).project(project)
+        proj.version(version).download("yolov8", location=str(target_dir))
+        print(f"  Downloaded to: {target_dir}")
+        return True
+    except Exception as e:
+        print(f"  ERROR downloading {project}: {e}")
+        print("  Manual alternative:")
+        print(f"    1. Visit: https://universe.roboflow.com/{workspace}/{project}")
+        print("    2. Click 'Download' → YOLOv8 format")
+        print(f"    3. Extract to: {target_dir}/")
+        return False
+
+
 def download_compcars():
     """Download CompCars dataset from Kaggle."""
     print("\n" + "="*50)
     print("Downloading CompCars Dataset...")
     print("="*50)
-    
-    compcars_dir = DATASETS_DIR / "compcars"
+
+    compcars_dir = ML_DATASETS_DIR / "compcars"
     if compcars_dir.exists():
         print("CompCars already exists. Skipping...")
         return True
-    
-    # Download from Kaggle
+
     cmd = "kaggle datasets download -d renancostaalencar/compcars"
-    if not run_command(cmd, cwd=str(DATASETS_DIR)):
+    if not run_command(cmd, cwd=str(ML_DATASETS_DIR)):
         print("Failed to download CompCars. Make sure Kaggle CLI is configured.")
         return False
-    
-    # Extract
-    zip_path = DATASETS_DIR / "compcars.zip"
+
+    zip_path = ML_DATASETS_DIR / "compcars.zip"
     if zip_path.exists():
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(compcars_dir)
         zip_path.unlink()
         print(f"Extracted CompCars to {compcars_dir}")
-    
+
     return True
 
 
@@ -62,29 +132,26 @@ def download_carparts_seg():
     print("\n" + "="*50)
     print("Downloading Carparts-seg Dataset...")
     print("="*50)
-    
-    carparts_dir = DATASETS_DIR / "carparts-seg"
+
+    carparts_dir = ML_DATASETS_DIR / "carparts-seg"
     if carparts_dir.exists():
         print("Carparts-seg already exists. Skipping...")
         return True
-    
-    # Use Ultralytics to download
+
     try:
         import urllib.request
-        
-        # Direct download URL
+
         url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/carparts-seg.zip"
-        zip_path = DATASETS_DIR / "carparts-seg.zip"
-        
+        zip_path = ML_DATASETS_DIR / "carparts-seg.zip"
+
         print(f"Downloading from {url}...")
         urllib.request.urlretrieve(url, zip_path)
-        
-        # Extract
+
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(carparts_dir)
         zip_path.unlink()
         print(f"Extracted Carparts-seg to {carparts_dir}")
-        
+
         return True
     except Exception as e:
         print(f"Error downloading Carparts-seg: {e}")
@@ -96,127 +163,24 @@ def download_stanford_cars():
     print("\n" + "="*50)
     print("Downloading Stanford Cars Dataset...")
     print("="*50)
-    
-    stanford_dir = DATASETS_DIR / "stanford_cars"
+
+    stanford_dir = ML_DATASETS_DIR / "stanford_cars"
     if stanford_dir.exists():
         print("Stanford Cars already exists. Skipping...")
         return True
-    
-    # Download from Kaggle
+
     cmd = "kaggle datasets download -d eduardo4jesus/stanford-cars-dataset"
-    if not run_command(cmd, cwd=str(DATASETS_DIR)):
+    if not run_command(cmd, cwd=str(ML_DATASETS_DIR)):
         print("Failed to download Stanford Cars.")
         return False
-    
-    # Extract
-    zip_path = DATASETS_DIR / "stanford-cars-dataset.zip"
+
+    zip_path = ML_DATASETS_DIR / "stanford-cars-dataset.zip"
     if zip_path.exists():
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(stanford_dir)
         zip_path.unlink()
         print(f"Extracted Stanford Cars to {stanford_dir}")
-    
-    return True
 
-
-def download_roboflow_carparts():
-    """
-    Download Roboflow car parts datasets.
-    Note: Requires manual download from Roboflow Universe.
-    """
-    print("\n" + "="*50)
-    print("Roboflow Datasets (Manual Download Required)")
-    print("="*50)
-    
-    roboflow_dir = DATASETS_DIR / "roboflow_carparts"
-    roboflow_dir.mkdir(exist_ok=True)
-    
-    print("""
-    Please manually download from Roboflow Universe:
-    
-    1. Create account at https://app.roboflow.com
-    2. Go to these URLs and fork the datasets:
-    
-       - https://universe.roboflow.com/motork/car-parts-yolov8-unir
-       - https://universe.roboflow.com/team-data/car-parts-ybiev
-       - https://universe.roboflow.com/car-oil/motor-oil
-    
-    3. Export each as YOLOv8 format
-    4. Extract to: ml_datasets/roboflow_carparts/
-    
-    Directory structure:
-    ml_datasets/roboflow_carparts/
-    ├── car_parts_motork/
-    ├── car_parts_team/
-    └── motor_oil/
-    """)
-    
-    return True
-
-
-def create_combined_dataset():
-    """Create combined dataset configuration."""
-    print("\n" + "="*50)
-    print("Creating Combined Dataset Configuration...")
-    print("="*50)
-    
-    combined_dir = DATASETS_DIR / "combined_car_parts"
-    combined_dir.mkdir(exist_ok=True)
-    
-    # Create images and labels directories
-    (combined_dir / "images" / "train").mkdir(parents=True, exist_ok=True)
-    (combined_dir / "images" / "val").mkdir(parents=True, exist_ok=True)
-    (combined_dir / "labels" / "train").mkdir(parents=True, exist_ok=True)
-    (combined_dir / "labels" / "val").mkdir(parents=True, exist_ok=True)
-    
-    # Create data.yaml
-    yaml_content = """# Combined Car Parts Dataset Configuration
-# Generated by download_datasets.py
-
-# Dataset paths
-path: ./ml_datasets/combined_car_parts
-train: images/train
-val: images/val
-
-# Classes
-names:
-  # Car body parts
-  0: front_bumper
-  1: rear_bumper
-  2: hood
-  3: trunk
-  4: front_door
-  5: rear_door
-  6: front_light
-  7: rear_light
-  8: front_windshield
-  9: rear_windshield
-  10: wheel
-  11: mirror
-  12: grille
-  
-  # Auto parts products
-  13: engine_oil
-  14: oil_filter
-  15: air_filter
-  16: brake_pad
-  17: brake_disc
-  18: spark_plug
-  19: battery
-  20: tire
-  
-  # General categories
-  21: car_part
-  22: car
-"""
-    
-    yaml_path = combined_dir / "data.yaml"
-    with open(yaml_path, 'w') as f:
-        f.write(yaml_content)
-    
-    print(f"Created configuration at {yaml_path}")
-    print("\nNote: You need to merge the datasets manually or use the merge script.")
-    
     return True
 
 
@@ -225,41 +189,70 @@ def main():
     print("="*60)
     print("   CAR PARTS DATASET DOWNLOAD SCRIPT")
     print("="*60)
-    
-    print("\nThis script will download the following datasets:")
-    print("  1. CompCars (27,618 images)")
-    print("  2. Carparts-seg (3,833 images)")
-    print("  3. Stanford Cars (16,185 images)")
-    print("  4. Roboflow datasets (manual)")
-    print("\nTotal: ~47,000+ images")
-    
-    input("\nPress Enter to start downloading...")
-    
-    # Download datasets
-    results = {
-        "CompCars": download_compcars(),
-        "Carparts-seg": download_carparts_seg(),
-        "Stanford Cars": download_stanford_cars(),
-        "Roboflow": download_roboflow_carparts(),
-    }
-    
-    # Create combined config
-    create_combined_dataset()
-    
+
+    has_api_key = bool(os.environ.get("ROBOFLOW_API_KEY"))
+
+    print("\nDatasets to download:")
+    print("  [Roboflow - Auto]")
+    for ds in ROBOFLOW_DATASETS:
+        print(f"    • {ds['desc']}")
+    print("  [Kaggle/Ultralytics - Optional]")
+    print("    • CompCars (27,618 images)")
+    print("    • Carparts-seg (3,833 images)")
+    print("    • Stanford Cars (16,185 images)")
+
+    if not has_api_key:
+        print("\n" + "!"*60)
+        print("  WARNING: ROBOFLOW_API_KEY not set!")
+        print("  Roboflow datasets will be skipped.")
+        print("  Get key: https://app.roboflow.com/settings/api")
+        print("!"*60)
+
+    print("\nPress Enter to start (or Ctrl+C to cancel)...")
+    try:
+        input()
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return
+
+    results = {}
+
+    # Download Roboflow datasets
+    if has_api_key:
+        for ds in ROBOFLOW_DATASETS:
+            success = download_with_roboflow(
+                ds["workspace"], ds["project"], ds["version"], ds["desc"]
+            )
+            results[ds["desc"]] = success
+    else:
+        print("\nSkipping Roboflow datasets (no API key).")
+
+    # Optional: Download Kaggle/Ultralytics datasets
+    print("\nDownload Kaggle/Ultralytics datasets too? (y/n): ", end="")
+    try:
+        ans = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = "n"
+
+    if ans == "y":
+        results["CompCars"] = download_compcars()
+        results["Carparts-seg"] = download_carparts_seg()
+        results["Stanford Cars"] = download_stanford_cars()
+
     # Summary
     print("\n" + "="*60)
     print("   DOWNLOAD SUMMARY")
     print("="*60)
-    
+
     for dataset, success in results.items():
         status = "✓ SUCCESS" if success else "✗ FAILED"
         print(f"  {dataset}: {status}")
-    
+
     print("\nNext steps:")
-    print("  1. Check ml_datasets/ directory for downloaded files")
-    print("  2. Download Roboflow datasets manually (see instructions above)")
-    print("  3. Run merge script to combine datasets (optional)")
-    print("  4. Train with: python scripts/train_model.py")
+    print("  1. Run merge script:")
+    print("     python scripts/merge_datasets.py")
+    print("  2. Train model:")
+    print("     python scripts/train_model.py")
 
 
 if __name__ == "__main__":

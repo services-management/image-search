@@ -62,7 +62,7 @@ API_KEY=your-generated-key-here                 ← fill this in
 **Option A — docker-compose (recommended)**
 
 ```bash
-git clone https://github.com/albkue/car-parts-yolov8.git
+git clone https://github.com/services-management/image-search
 cd ml_service
 # Create .env from the variables above
 docker-compose up -d

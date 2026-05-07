@@ -6,16 +6,17 @@ uvicorn==0.38.0
 python-multipart==0.0.20
 httpx==0.28.1
 
-# ML Core
-ultralytics==8.3.0           # YOLOv8
-paddleocr==2.8.0             # OCR
-paddlepaddle>=2.6.2          # PaddlePaddle backend
-
-# Embeddings & Vector Search
+# ML Core (heavy deps pre-installed in Dockerfile for layer caching)
+ultralytics==8.3.0
+paddleocr==2.8.0
+paddlepaddle>=2.6.2
 torch==2.2.0
 transformers==4.40.0
-sentence-transformers==3.0.1  # For BGE-M3 Text Embedding
-faiss-cpu==1.8.0             # Use faiss-gpu for NVIDIA GPU support
+sentence-transformers==3.0.1
+huggingface_hub>=0.23.0
+
+# Vector Search
+faiss-cpu==1.8.0
 pillow==10.3.0
 numpy==1.26.0
 
@@ -23,13 +24,6 @@ numpy==1.26.0
 pydantic-settings==2.12.0
 python-dotenv==1.2.1
 
-# Testing
-pytest==9.0.1
-pytest-xdist==3.6.1          # For parallel testing
-
 # Fuzzy matching
 thefuzz>=0.19.0
 python-Levenshtein>=0.20.0
-
-# Linting
-ruff>=0.14.0

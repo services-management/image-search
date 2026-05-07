@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
+
+    # Security
+    API_KEY: str = os.getenv("API_KEY", "")
     
     class Config:
         env_file = ".env"

@@ -12,13 +12,13 @@ services:
       - .env
     environment:
       - MAIN_API_URL=http://host.docker.internal:8085
-      - YOLO_MODEL=yolov8n.pt
+      - YOLO_MODEL=hf://albkue/car-parts-yolov8/best.pt
       - CLIP_MODEL=openai/clip-vit-large-patch14
       - FAISS_INDEX_PATH=/app/data/faiss_index
       - USE_GPU=false
     volumes:
-      - ./models:/app/models
       - ./data:/app/data
+      - hf_cache:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # Uncomment for GPU support
@@ -29,3 +29,6 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+
+volumes:
+  hf_cache:

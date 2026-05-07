@@ -4,7 +4,7 @@ os.environ["FLAGS_use_mkldnn"] = "0"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 """ML Search Service - Main Application Entry Point."""
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 import logging  # noqa: E402
@@ -73,6 +73,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API key middleware — rejects requests missing the correct key
+# Skips check if API_KEY is not configured (open mode for local dev)
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if settings.API_KEY:
+        # /health and / are always public
+        if request.url.path not in ("/health", "/"):
+            key = request.headers.get("X-API-Key")
+            if key != settings.API_KEY:
+                raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return await call_next(request)
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")

@@ -13,29 +13,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libgflags-dev \
     libsnappy-dev \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY requirements.txt .
+# Increase pip timeout and retries to handle flaky PyPI connections
+ENV PIP_DEFAULT_TIMEOUT=180 \
+    PIP_RETRIES=5
 
-# Install Python dependencies
+# 1. Install CPU-only torch first (separate index URL, ~200MB vs ~2.4GB for CUDA)
+RUN pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.2.0
+
+# 2. Install remaining heavy dependencies (cached layer — only rebuilds when versions change)
+RUN pip install --no-cache-dir \
+    transformers==4.40.0 \
+    sentence-transformers==3.0.1 \
+    paddlepaddle==2.6.2 \
+    paddleocr==2.8.0 \
+    ultralytics==8.3.0 \
+    huggingface_hub>=0.23.0
+
+# 3. Copy and install remaining app dependencies (excludes already-installed heavy deps)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Create directories for models and data
-RUN mkdir -p /app/models /app/data/faiss_index
-
-# Pre-download models during build (optional - reduces startup time)
-
-ARG SKIP_MODEL_DOWNLOAD=false
-RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
-        python -c "from ultralytics import YOLO; YOLO('yolov8m.pt')" || echo "YOLO model download skipped"; \
-        python -c "from paddleocr import PaddleOCR; PaddleOCR(lang='en', show_log=False)" || echo "OCR model download skipped"; \
-    else \
-        echo "Skipping model pre-download"; \
-    fi
+# Create directories for data
+RUN mkdir -p /app/data/faiss_index
 
 # Expose port
 EXPOSE 8001

@@ -7,14 +7,14 @@ python-multipart==0.0.20
 httpx==0.28.1
 
 # ML Core (heavy deps pre-installed in Dockerfile for layer caching)
-# ultralytics==8.3.0
-# paddleocr==2.8.0
-# paddlepaddle>=2.6.2
-# torch==2.2.0
-# transformers==4.40.0
-# sentence-transformers==3.0.1
-# huggingface_hub>=0.23.0
-# datasets==2.19.0
+ultralytics==8.3.0
+paddleocr==2.8.0
+paddlepaddle>=2.6.2
+torch==2.2.0
+transformers==4.40.0
+sentence-transformers==3.0.1
+huggingface_hub>=0.23.0
+datasets==2.19.0
 
 # Vector Search
 faiss-cpu==1.8.0

@@ -38,7 +38,8 @@ class TestDynamicWeights:
         # Product 1: catalog only, Product 2: image only, Product 3: text only
         results = merger.merge(
             [_catalog(1, score=1.0)],
-            [_vector(2, similarity=0.8)], 0.8,
+            [_vector(2, similarity=0.8)],
+            0.8,
             alpha=0.75, beta=0.0, gamma=0.25,
             text_results=[_text(3, similarity=0.9)]
         )
@@ -50,7 +51,8 @@ class TestDynamicWeights:
         merger = ResultMerger()
         results = merger.merge(
             [_catalog(1, score=1.0)],
-            [_vector(2, similarity=0.9)], 0.8,
+            [_vector(2, similarity=0.9)],
+            0.8,
             alpha=0.0, beta=0.0, gamma=1.0
         )
         product_2 = next(r for r in results if r.product_id == 2)
@@ -63,7 +65,8 @@ class TestDynamicWeights:
         alpha, beta, gamma = 0.75, 0.0, 0.0
         results = merger.merge(
             [_catalog(10, score=1.0)],
-            [_vector(20, similarity=0.85)], 0.3,
+            [_vector(20, similarity=0.85)],
+            0.3,
             alpha=alpha, beta=beta, gamma=gamma
         )
         catalog_result = next(r for r in results if r.product_id == 10)
@@ -78,7 +81,8 @@ class TestDynamicWeights:
         # Product 2: image only
         results = merger.merge(
             [_catalog(1, score=1.0)],
-            [_vector(1, similarity=0.9), _vector(2, similarity=0.95)], 0.8,
+            [_vector(1, similarity=0.9), _vector(2, similarity=0.95)],
+            0.8,
             alpha=0.4, beta=0.0, gamma=0.2
         )
         product_1 = next(r for r in results if r.product_id == 1)
@@ -98,7 +102,8 @@ class TestDynamicWeights:
         # → all scores should be 0
         results = merger.merge(
             [_catalog(1)],
-            [_vector(2)], 0.9,
+            [_vector(2)],
+            0.9,
             alpha=0.0, beta=0.0, gamma=0.0
         )
         for r in results:
@@ -110,7 +115,8 @@ class TestDynamicWeights:
         # Low confidence — should trigger low_confidence weights without error
         results = merger.merge(
             [_catalog(1)],
-            [_vector(2)], 0.2  # No alpha/beta/gamma passed
+            [_vector(2)],
+            0.2  # No alpha/beta/gamma passed
         )
         assert isinstance(results, list)
         assert len(results) == 2
@@ -121,7 +127,8 @@ class TestDynamicWeights:
         # Only alpha passed, beta/gamma is None → should NOT crash, use fallback
         results = merger.merge(
             [_catalog(1)],
-            [_vector(2)], 0.8,
+            [_vector(2)],
+            0.8,
             alpha=0.5  # beta/gamma not passed
         )
         assert isinstance(results, list)
@@ -161,7 +168,8 @@ class TestMergerSortingAndLimits:
         merger = ResultMerger()
         results = merger.merge(
             [],
-            [_vector(1, 0.5), _vector(2, 0.99), _vector(3, 0.75)], 0.8
+            [_vector(1, 0.5), _vector(2, 0.99), _vector(3, 0.75)],
+            0.8
         )
         assert results[0].product_id == 2
 
@@ -191,7 +199,8 @@ class TestMatchTypeTagging:
         merger = ResultMerger()
         results = merger.merge(
             [_catalog(1)],
-            [_vector(1, 0.9), _vector(2, 0.7)], 0.8
+            [_vector(1, 0.9), _vector(2, 0.7)],
+            0.8
         )
         types = {r.product_id: r.match_type for r in results}
         assert types[1] == "hybrid"
@@ -221,7 +230,8 @@ class TestScoreCalculation:
         merger = ResultMerger()
         results = merger.merge(
             [],
-            [_vector(1, similarity=0.8)], 0.8,
+            [_vector(1, similarity=0.8)],
+            0.8,
             alpha=0.5, beta=0.0, gamma=0.0
         )
         product = results[0]

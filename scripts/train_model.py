@@ -111,7 +111,7 @@ def train_model(args):
         save_period=10,       # Save every N epochs
         
         # Output
-        project=args.project,
+        project=args.project, 
         name=args.name,
         
         # Performance

@@ -270,38 +270,32 @@ async def search_by_image(
         logger.error(f"Error preprocessing image: {e}")
         raise HTTPException(500, "Image preprocessing failed")
     
-    # 3. Run detection and OCR in parallel
-    # YOLO uses 640x640 for speed, OCR uses higher-res for text readability
+    # 3. Run detection (always) and OCR (only if ENABLE_OCR=true)
     loop = asyncio.get_event_loop()
-    
-    # Run YOLO detection on processed image (640x640)
-    detection_task = loop.run_in_executor(
+
+    detection_result = await loop.run_in_executor(
         None,
         components.detector.detect,
         processed
     )
-    
-    # Run OCR on a larger, text-sharpened image (1280x1280)
-    try:
-        ocr_pil = Image.fromarray(processed)
-        ocr_pil = ocr_pil.resize((1280, 1280), Image.Resampling.LANCZOS)
-        # Sharpen specifically for text
-        from PIL import ImageFilter
-        ocr_pil = ocr_pil.filter(ImageFilter.SHARPEN)
-        ocr_image = np.array(ocr_pil)
-    except Exception:
-        ocr_image = processed  # Fallback to processed if resize fails
-    
-    ocr_task = loop.run_in_executor(
-        None,
-        components.ocr.extract_all,
-        ocr_image
-    )
-    
-    # Wait for both to complete
-    detection_result, ocr_results = await asyncio.gather(
-        detection_task, ocr_task
-    )
+
+    ocr_results = []
+    if settings.ENABLE_OCR:
+        try:
+            ocr_pil = Image.fromarray(processed)
+            ocr_pil = ocr_pil.resize((1280, 1280), Image.Resampling.LANCZOS)
+            from PIL import ImageFilter
+            ocr_pil = ocr_pil.filter(ImageFilter.SHARPEN)
+            ocr_image = np.array(ocr_pil)
+        except Exception:
+            ocr_image = processed
+        ocr_results = await loop.run_in_executor(
+            None,
+            components.ocr.extract_all,
+            ocr_image
+        )
+    else:
+        logger.debug("OCR disabled (ENABLE_OCR=false)")
     
     # 4. Build query parameters
     part_type = detection_result.part_type if detection_result else None
@@ -412,9 +406,9 @@ async def search_by_image(
     # 6. Search FAISS image index
     image_results = components.faiss_index.search(embedding, k=top_k * 2)
 
-    # 6b. Search FAISS text index (BGE-M3) using OCR text
+    # 6b. Search FAISS text index using OCR text (only if both OCR and text search enabled)
     text_results = []
-    if ocr_text:
+    if settings.ENABLE_TEXT_SEARCH and ocr_text:
         try:
             text_embedding = await loop.run_in_executor(
                 None,
@@ -487,24 +481,10 @@ async def search_by_image(
         text_results=text_results
     )
     
-    # 9. Fetch product names from catalog for enrichment
-    product_names = {}
-    if merged_results:
-        try:
-            product_ids = [r.product_id for r in merged_results]
-            products_data = await components.catalog_client.get_products_by_ids(product_ids)
-            product_names = {
-                pid: data.get("name", data.get("product_name", "Unknown"))
-                for pid, data in products_data.items()
-            }
-        except Exception as e:
-            logger.warning(f"Could not fetch product names: {e}")
-    
-    # 10. Format response
+    # 9. Format response — backend enriches product details; ML returns IDs + scores only
     results = [
         SearchResultSchema(
             product_id=r.product_id,
-            name=product_names.get(r.product_id),
             score=round(r.score, 3),
             match_type=r.match_type
         )

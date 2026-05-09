@@ -29,6 +29,7 @@ RUN pip install --no-cache-dir \
 # 2. Install remaining heavy dependencies (cached layer — only rebuilds when versions change)
 RUN pip install --no-cache-dir \
     transformers==4.40.0 \
+    datasets==2.19.0 \
     sentence-transformers==3.0.1 \
     paddlepaddle==2.6.2 \
     paddleocr==2.8.0 \
